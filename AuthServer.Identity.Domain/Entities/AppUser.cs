@@ -11,6 +11,7 @@ namespace AuthServer.Identity.Domain.Entities
     public string FullName => $"{FirstName} {LastName}";
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
     public bool IsActive { get; set; } = true;
+    public string? Location { get; set; }
 
     // Navigation Property: Bir kullanıcının birden fazla refresh token'ı olabilir
     // (Telefondan girdi, Webden girdi vs.)

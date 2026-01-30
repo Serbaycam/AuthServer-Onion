@@ -36,7 +36,8 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Register
         UserName = request.Email, // Genelde email username olarak kullanılır
         FirstName = request.FirstName,
         LastName = request.LastName,
-        IsActive = true
+        IsActive = true,
+        Location = request.Location
       };
 
       // 4. Veritabanına kaydet (Şifreyi hashleyerek)
@@ -50,7 +51,9 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Register
         response.Errors = errors;
         return response;
       }
-      await _userManager.AddToRoleAsync(user, Roles.Basic.ToString());
+      string roleToAssign = !string.IsNullOrEmpty(request.Role) ? request.Role : Roles.Basic.ToString();
+
+      await _userManager.AddToRoleAsync(user, roleToAssign);
       return new ServiceResponse<string>(user.Id.ToString(), "Kullanıcı başarıyla oluşturuldu.");
     }
   }

@@ -31,7 +31,8 @@ namespace AuthServer.Identity.Infrastructure.Services
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()), // Token ID
-                new Claim("fullName", user.FullName ?? "") // Custom Claim
+                new Claim("fullName", user.FullName ?? ""),
+                new Claim("location", user.Location ?? "Global")// Custom Claim
             };
 
       // Rolleri ekle

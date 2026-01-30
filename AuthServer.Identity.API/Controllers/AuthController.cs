@@ -5,6 +5,7 @@ using AuthServer.Identity.Application.Features.Auth.Commands.RefreshToken;
 using AuthServer.Identity.Application.Features.Auth.Commands.Register;
 using AuthServer.Identity.Application.Features.Auth.Commands.Revoke;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AuthServer.Identity.API.Controllers
 {
@@ -19,6 +20,7 @@ namespace AuthServer.Identity.API.Controllers
       _mediator = mediator;
     }
 
+    [Authorize(Roles = "SuperAdmin")]
     [HttpPost("register")]
     public async Task<IActionResult> Register(CreateUserCommand command)
     {
