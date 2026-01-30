@@ -1,17 +1,16 @@
-﻿using MediatR;
-using AuthServer.Identity.Application.Wrappers;
+﻿using AuthServer.Identity.Application.Wrappers;
+using MediatR;
 
 namespace AuthServer.Identity.Application.Features.Auth.Commands.Register
 {
-  // Bu komut geriye ServiceResponse<string> (UserId) dönecek
-  public class CreateUserCommand : IRequest<ServiceResponse<string>>
-  {
-    public string FirstName { get; set; }
-    public string LastName { get; set; }
-    public string Email { get; set; }
-    public string Password { get; set; }
-    public string ConfirmPassword { get; set; }
-    public string Location { get; set; }
-    public string? Role { get; set; }
-  }
+    // Bu komut geriye ServiceResponse<string> (UserId) dönecek
+    public class CreateUserCommand : IRequest<ServiceResponse<string>>
+    {
+        public string FirstName { get; set; }
+        public string LastName { get; set; }
+        public string Email { get; set; }
+        public string Password { get; set; }
+        public string ConfirmPassword { get; set; }
+        public string? Role { get; set; }
+    }
 }

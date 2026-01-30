@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace AuthServer.Identity.Domain.Common
+﻿namespace AuthServer.Identity.Domain.Common
 {
     public abstract class BaseEntity
     {

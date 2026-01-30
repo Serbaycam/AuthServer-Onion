@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,29 +10,29 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-      // 1. ÝÞTE SÝHÝRLÝ SATIR BURASI!
-      // Bu özellik 'true' olduðu sürece .NET senin claimlerini deðiþtirir.
-      // Bunu 'false' yapýnca claimler olduðu gibi (ham haliyle) kalýr.
-      options.MapInboundClaims = false;
+        // 1. ÝÞTE SÝHÝRLÝ SATIR BURASI!
+        // Bu özellik 'true' olduðu sürece .NET senin claimlerini deðiþtirir.
+        // Bunu 'false' yapýnca claimler olduðu gibi (ham haliyle) kalýr.
+        options.MapInboundClaims = false;
 
-      options.TokenValidationParameters = new TokenValidationParameters
-      {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
 
-        ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
-        ValidAudience = builder.Configuration["JwtSettings:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"])),
+            ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+            ValidAudience = builder.Configuration["JwtSettings:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"])),
 
-        ClockSkew = TimeSpan.Zero,
+            ClockSkew = TimeSpan.Zero,
 
-        // Artýk Token içinde "email" yazýyorsa buraya da "email" yazýyoruz.
-        // Çünkü MapInboundClaims = false dedik, .NET artýk isimleri deðiþtirmiyor.
-        NameClaimType = "email",
-        RoleClaimType = "role"
-      };
+            // Artýk Token içinde "email" yazýyorsa buraya da "email" yazýyoruz.
+            // Çünkü MapInboundClaims = false dedik, .NET artýk isimleri deðiþtirmiyor.
+            NameClaimType = "email",
+            RoleClaimType = "role"
+        };
     });
 
 builder.Services.AddControllers();
