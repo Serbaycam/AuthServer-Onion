@@ -1,0 +1,6 @@
+@AuthServer.Laboratory.API_HostAddress = http://localhost:5091
+
+GET {{AuthServer.Laboratory.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
