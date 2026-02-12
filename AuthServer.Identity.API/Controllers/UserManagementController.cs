@@ -4,6 +4,10 @@ using AuthServer.Identity.Application.Features.Management.Users.Queries;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using AuthServer.Identity.Application.Features.Management.Users.Commands.AdminChangePassword;
+using AuthServer.Identity.Application.Features.Management.Users.Commands.CreateUserByAdmin;
+using System.Security.Claims;
+using AuthServer.Identity.Application.Features.Management.Users.Commands.UpdateUser;
 
 namespace AuthServer.Identity.API.Controllers
 {
@@ -23,7 +27,37 @@ namespace AuthServer.Identity.API.Controllers
             var response = await _mediator.Send(new GetUsersWithRolesQuery());
             return Ok(response);
         }
+        [HttpPost("create-user")]
+        public async Task<IActionResult> CreateUser(CreateUserByAdminCommand command)
+        {
+            command.AdminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            command.IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
 
+            var response = await _mediator.Send(command);
+            if (response.Succeeded) return Ok(response);
+            return BadRequest(response);
+        }
+        [HttpPut("update-user")]
+        public async Task<IActionResult> UpdateUser(UpdateUserCommand command)
+        {
+            command.AdminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            command.IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
+
+            var response = await _mediator.Send(command);
+            if (response.Succeeded) return Ok(response);
+            return BadRequest(response);
+        }
+        // 2. Yönetici Tarafından Şifre Değiştirme
+        [HttpPost("change-password")]
+        public async Task<IActionResult> ChangePassword(AdminChangePasswordCommand command)
+        {
+            command.AdminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            command.IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
+
+            var response = await _mediator.Send(command);
+            if (response.Succeeded) return Ok(response);
+            return BadRequest(response);
+        }
         // Kullanıcıya Rol Ata (Eksik olan kısım buydu)
         [HttpPost("assign-roles")]
         public async Task<IActionResult> AssignRoles(AssignRolesCommand command)

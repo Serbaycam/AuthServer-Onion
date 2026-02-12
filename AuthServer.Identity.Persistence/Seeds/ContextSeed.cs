@@ -13,10 +13,18 @@ namespace AuthServer.Identity.Persistence.Seeds
         {
             // 1. Rolleri Veritabanına Ekle
             // Enum'daki her bir değeri gez ve veritabanında yoksa oluştur.
-            await roleManager.CreateAsync(new AppRole { Name = Roles.SuperAdmin.ToString() });
-            await roleManager.CreateAsync(new AppRole { Name = Roles.LabManager.ToString() });
-            await roleManager.CreateAsync(new AppRole { Name = Roles.LabTechnician.ToString() });
-            await roleManager.CreateAsync(new AppRole { Name = Roles.Basic.ToString() });
+            foreach (Roles role in Enum.GetValues<Roles>())
+            {
+                var roleName = role.ToString();
+
+                if (!await roleManager.RoleExistsAsync(roleName))
+                {
+                    await roleManager.CreateAsync(new AppRole
+                    {
+                        Name = roleName
+                    });
+                }
+            }
         }
 
         public static async Task SeedSuperAdminAsync(UserManager<AppUser> userManager, RoleManager<AppRole> roleManager)
