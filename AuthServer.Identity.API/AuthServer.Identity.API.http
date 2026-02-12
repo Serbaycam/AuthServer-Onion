@@ -18,93 +18,56 @@ Content-Type: application/json
 
 # Login isteðinden dönen "accessToken" deðerini buraya yapýþtýrýn.
 # Diðer tüm istekler bu deðiþkeni kullanacak.
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwNDQ4NGNmYi1kYzAyLTQ2N2YtYzc5Ni0wOGRlNmEyZmU1MjciLCJlbWFpbCI6InN1cGVyYWRtaW5AQXV0aFNlcnZlci5sb2NhbCIsImp0aSI6Ijk5ZThmZTA3LTFhZjQtNDhkZS1hNTUwLTA0Yjk4ZjkyMjhkYyIsImZ1bGxOYW1lIjoiYWRtaW4gc3VwZXIiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOlsiU3VwZXJBZG1pbiIsIkxhYk1hbmFnZXIiXSwiZXhwIjoxNzcwOTAwNjE5LCJpc3MiOiJBdXRoU2VydmVyIiwiYXVkIjoiQXV0aFNlcnZlci5DbGllbnRzIn0.no4JdNjYDAPjOOMtFM9Q4Rw8bxdVAKIHlqQYrr9IXxo
-
-# @name RefreshToken
-POST {{AuthServer.Identity.API_HostAddress}}/api/auth/refresh-token
-Content-Type: application/json
-
-{
-  "accessToken": "{{token}}",
-  "refreshToken": "qYsoWA/nK1+rJ6QqN/crJJ7iROUIa2YE7Uxsp9Is9Yw=" 
-}
-
-###
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwNDQ4NGNmYi1kYzAyLTQ2N2YtYzc5Ni0wOGRlNmEyZmU1MjciLCJlbWFpbCI6InN1cGVyYWRtaW5AQXV0aFNlcnZlci5sb2NhbCIsImp0aSI6IjI3MWEyNzU5LWVjYTQtNDQ1Ny04MTIyLTIxM2NhMTA0YTQwMCIsImZ1bGxOYW1lIjoiYWRtaW4gc3VwZXIiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOlsiU3VwZXJBZG1pbiIsIkxhYk1hbmFnZXIiXSwiZXhwIjoxNzcwOTAyMDY0LCJpc3MiOiJBdXRoU2VydmVyIiwiYXVkIjoiQXV0aFNlcnZlci5DbGllbnRzIn0.qSRQ-UkGss8h9aq7HnTVgFbXcRTaodTnQrwg2H24aF4
 
 # ==========================================
-# 2. OTURUM YÖNETÝMÝ (SESSION MANAGEMENT)
+# 4. ROL YÖNETÝMÝ (ROLE CRUD)
 # ==========================================
 
-# Aktif Oturumlarý Listele
-GET {{AuthServer.Identity.API_HostAddress}}/api/SessionManagement/active-sessions
+# Tüm Rolleri Listele
+GET {{AuthServer.Identity.API_HostAddress}}/api/RoleManagement/roles
 Authorization: Bearer {{token}}
 Accept: application/json
 
 ###
 
-# Oturumu Sonlandýr (Kill Session)
-# Yukarýdaki listeden aldýðýn bir "tokenId" deðerini buraya yaz.
-POST {{AuthServer.Identity.API_HostAddress}}/api/SessionManagement/kill-session
+# Yeni Rol Oluþtur (Örn: Editor)
+POST {{AuthServer.Identity.API_HostAddress}}/api/RoleManagement/role
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "tokenId": "6cc94ca9-8aff-4b33-85c2-d640a37dd71a"
+  "roleName": "Editor"
 }
 
 ###
 
-# ==========================================
-# 3. KULLANICI YÖNETÝMÝ (USER MANAGEMENT)
-# ==========================================
-
-# Tüm Kullanýcýlarý ve Rollerini Getir
-GET {{AuthServer.Identity.API_HostAddress}}/api/UserManagement/all-users
-Authorization: Bearer {{token}}
-Accept: application/json
-
-###
-
-# Kullanýcý Durumunu Deðiþtir (Aktif/Pasif)
-# Bir kullanýcýnýn ID'sini buraya yazarak onu dondurabilirsin.
-POST {{AuthServer.Identity.API_HostAddress}}/api/UserManagement/update-status
+# Rol Güncelle (ID'yi listeden alýp buraya yapýþtýr)
+PUT {{AuthServer.Identity.API_HostAddress}}/api/RoleManagement/role
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "userId": "04484cfb-dc02-467f-c796-08de6a2fe527",
-  "isActive": false
+  "roleId": "E822718B-43CE-4366-CF54-08DE6A3697DA",
+  "newRoleName": "SeniorEditor"
 }
 
 ###
 
-# Kullanýcýya Rol Ata
-POST {{AuthServer.Identity.API_HostAddress}}/api/UserManagement/assign-roles
+# Rol Sil (ID'yi listeden alýp buraya yapýþtýr)
+DELETE {{AuthServer.Identity.API_HostAddress}}/api/RoleManagement/role/E822718B-43CE-4366-CF54-08DE6A3697DA
+Authorization: Bearer {{token}}
+
+### 
+
+# Rolün Yetkilerini Güncelle
+POST {{AuthServer.Identity.API_HostAddress}}/api/RoleManagement/permissions
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "userId": "04484cfb-dc02-467f-c796-08de6a2fe527",
-  "roles": [
-    "SuperAdmin",
-    "LabManager"
+  "roleId": "E822718B-43CE-4366-CF54-08DE6A3697DA",
+  "permissions": [
+    "Permissions.Laboratories.View"
   ]
 }
-
-###
-
-# ==========================================
-# 4. ROL & YETKÝ YÖNETÝMÝ (ROLE MANAGEMENT)
-# ==========================================
-
-# Sistemdeki Tüm Tanýmlý Ýzinleri (Permissions) Listele
-GET {{AuthServer.Identity.API_HostAddress}}/api/RoleManagement/all-permissions
-Authorization: Bearer {{token}}
-Accept: application/json
-
-###
-
-
-GET {{AuthServer.Identity.API_HostAddress}}/api/Dashboard/stats
-Authorization: Bearer {{token}}
-Accept: application/json

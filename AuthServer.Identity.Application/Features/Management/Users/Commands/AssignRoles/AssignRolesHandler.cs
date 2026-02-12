@@ -20,7 +20,11 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Ass
         {
             var user = await _userManager.FindByIdAsync(request.UserId.ToString());
             if (user == null) return new ServiceResponse<bool>("Kullanıcı bulunamadı.");
-
+            // Eğer liste boşsa veya null ise, otomatik olarak "Basic" rolünü ekle
+            if (request.Roles == null || !request.Roles.Any())
+            {
+                request.Roles = new List<string> { "Basic" };
+            }
             // 1. Gönderilen rollerin sistemde var olup olmadığını kontrol et
             foreach (var role in request.Roles)
             {
