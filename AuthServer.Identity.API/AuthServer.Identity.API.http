@@ -1,10 +1,119 @@
-@AuthServer.Identity.API_HostAddress = http://localhost:5295
+@AuthServer.Identity.API_HostAddress = https://localhost:7023
 
+# ==========================================
+# 1. GÝRÝÞ & TOKEN ÝÞLEMLERÝ
+# ==========================================
+
+# @name Login
 POST {{AuthServer.Identity.API_HostAddress}}/api/auth/login
 Accept: application/json
 Content-Type: application/json
 
 {
-  "email": "serbay@AuthServer.com",
-  "password": "Password123!"
+  "email": "superadmin@AuthServer.local",
+  "password": "Pa$$word123!"
+}
+
+###
+
+# Login isteðinden dönen "accessToken" deðerini buraya yapýþtýrýn.
+# Diðer tüm istekler bu deðiþkeni kullanacak.
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwNDQ4NGNmYi1kYzAyLTQ2N2YtYzc5Ni0wOGRlNmEyZmU1MjciLCJlbWFpbCI6InN1cGVyYWRtaW5AQXV0aFNlcnZlci5sb2NhbCIsImp0aSI6ImE0Y2U2MzUxLWVkZjItNGJmOC05NGFmLTYwNWYyYmI4MzZmMyIsImZ1bGxOYW1lIjoiYWRtaW4gc3VwZXIiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOiJTdXBlckFkbWluIiwiZXhwIjoxNzcwODk5Mzc5LCJpc3MiOiJBdXRoU2VydmVyIiwiYXVkIjoiQXV0aFNlcnZlci5DbGllbnRzIn0.zD4TnGYJ6nyWRe9SjhXTzbwTULCBHqfacDGd85whaGo
+
+# @name RefreshToken
+POST {{AuthServer.Identity.API_HostAddress}}/api/auth/refresh-token
+Content-Type: application/json
+
+{
+  "accessToken": "{{token}}",
+  "refreshToken": "qYsoWA/nK1+rJ6QqN/crJJ7iROUIa2YE7Uxsp9Is9Yw=" 
+}
+
+###
+
+# ==========================================
+# 2. OTURUM YÖNETÝMÝ (SESSION MANAGEMENT)
+# ==========================================
+
+# Aktif Oturumlarý Listele
+GET {{AuthServer.Identity.API_HostAddress}}/api/SessionManagement/active-sessions
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+# Oturumu Sonlandýr (Kill Session)
+# Yukarýdaki listeden aldýðýn bir "tokenId" deðerini buraya yaz.
+POST {{AuthServer.Identity.API_HostAddress}}/api/SessionManagement/kill-session
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tokenId": "6cc94ca9-8aff-4b33-85c2-d640a37dd71a"
+}
+
+###
+
+# ==========================================
+# 3. KULLANICI YÖNETÝMÝ (USER MANAGEMENT)
+# ==========================================
+
+# Tüm Kullanýcýlarý ve Rollerini Getir
+GET {{AuthServer.Identity.API_HostAddress}}/api/UserManagement/all-users
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+# Kullanýcý Durumunu Deðiþtir (Aktif/Pasif)
+# Bir kullanýcýnýn ID'sini buraya yazarak onu dondurabilirsin.
+POST {{AuthServer.Identity.API_HostAddress}}/api/UserManagement/update-status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "userId": "04484cfb-dc02-467f-c796-08de6a2fe527",
+  "isActive": false
+}
+
+###
+
+# Kullanýcýya Rol Ata
+POST {{AuthServer.Identity.API_HostAddress}}/api/UserManagement/assign-roles
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "userId": "04484cfb-dc02-467f-c796-08de6a2fe527",
+  "roles": [
+    "SuperAdmin",
+    "LabManager"
+  ]
+}
+
+###
+
+# ==========================================
+# 4. ROL & YETKÝ YÖNETÝMÝ (ROLE MANAGEMENT)
+# ==========================================
+
+# Sistemdeki Tüm Tanýmlý Ýzinleri (Permissions) Listele
+GET {{AuthServer.Identity.API_HostAddress}}/api/RoleManagement/all-permissions
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+# Rol Yetkilerini Güncelle
+# Rol ID'sini veritabanýndan veya listeden bulup buraya yaz.
+POST {{AuthServer.Identity.API_HostAddress}}/api/RoleManagement/update-permissions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "roleId": "ROLE-GUID-BURAYA",
+  "permissions": [
+    "Permissions.Laboratories.View",
+    "Permissions.Laboratories.Create"
+  ]
 }
