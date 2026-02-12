@@ -1,7 +1,218 @@
 ﻿@page "/"
+@using AuthServer.Dashboard.Models
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Headers
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
 
-<PageTitle>Home</PageTitle>
+@attribute [Authorize]
 
-<h1>Hello, world!</h1>
+@inject HttpClient Http
+@inject AuthenticationStateProvider AuthStateProvider
 
-Welcome to your new app.
+<PageTitle>Dashboard | Ana Sayfa</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark mb-0">Sistem Özeti</h2>
+            <p class="text-muted mb-0">Anlık sistem verileri ve son aktiviteler.</p>
+        </div>
+        <button class="btn btn-outline-primary btn-sm" @onclick="LoadDataAsync">
+            <i class="bi bi-arrow-clockwise"></i> Yenile
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="d-flex flex-column justify-content-center align-items-center" style="height: 300px;">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Yükleniyor...</span>
+            </div>
+            <p class="mt-3 text-muted">Veriler güncelleniyor...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger shadow-sm d-flex align-items-center" role="alert">
+            <i class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2"></i>
+            <div>
+                <strong>Hata Oluştu:</strong> @errorMessage
+            </div>
+        </div>
+    }
+    else if (stats != null)
+    {
+        <div class="row g-4 mb-5">
+            <div class="col-md-6 col-xl-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="text-muted text-uppercase fw-semibold mb-2">Toplam Kullanıcı</h6>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <h2 class="fw-bold mb-0 text-primary">@stats.TotalUsers</h2>
+                            <div class="icon-shape bg-primary bg-opacity-10 text-primary rounded p-3">
+                                <i class="bi bi-people-fill fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-xl-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="text-muted text-uppercase fw-semibold mb-2">Aktif Kullanıcı</h6>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <h2 class="fw-bold mb-0 text-success">@stats.ActiveUsers</h2>
+                            <div class="icon-shape bg-success bg-opacity-10 text-success rounded p-3">
+                                <i class="bi bi-person-check-fill fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-xl-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="text-muted text-uppercase fw-semibold mb-2">Pasif Kullanıcı</h6>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <h2 class="fw-bold mb-0 text-warning">@stats.PassiveUsers</h2>
+                            <div class="icon-shape bg-warning bg-opacity-10 text-warning rounded p-3">
+                                <i class="bi bi-person-x-fill fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-xl-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="text-muted text-uppercase fw-semibold mb-2">Canlı Oturumlar</h6>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <h2 class="fw-bold mb-0 text-danger">@stats.TotalActiveSessions</h2>
+                            <div class="icon-shape bg-danger bg-opacity-10 text-danger rounded p-3">
+                                <i class="bi bi-activity fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 border-bottom">
+                <h5 class="card-title mb-0 fw-bold text-dark">
+                    <i class="bi bi-clock-history me-2 text-primary"></i>Son Sistem Hareketleri
+                </h5>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">Kullanıcı</th>
+                            <th>İşlem Türü</th>
+                            <th>IP Adresi</th>
+                            <th>Tarih</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (stats.LatestActivities != null && stats.LatestActivities.Any())
+                        {
+                            @foreach (var log in stats.LatestActivities)
+                            {
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-initial rounded-circle bg-light text-primary fw-bold me-3" style="width:35px; height:35px; display:flex; align-items:center; justify-content:center;">
+                                                @log.UserEmail?.Substring(0, 1).ToUpper()
+                                            </div>
+                                            <div>
+                                                <span class="fw-semibold text-dark">@log.UserEmail</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge rounded-pill bg-secondary bg-opacity-10 text-secondary border border-secondary">
+                                            @log.Action
+                                        </span>
+                                    </td>
+                                    <td class="text-muted small">@log.IpAddress</td>
+                                    <td class="text-muted small">
+                                        @log.Date.ToLocalTime().ToString("dd MMM yyyy, HH:mm")
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="4" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                    Henüz kaydedilmiş bir aktivite yok.
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private DashboardStatsViewModel stats;
+    private string errorMessage;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            // Cookie'den Token'ı al
+            var token = user.FindFirst("AccessToken")?.Value;
+
+            if (string.IsNullOrEmpty(token))
+            {
+                errorMessage = "Oturum süreniz dolmuş olabilir. Lütfen tekrar giriş yapın.";
+                isLoading = false;
+                return;
+            }
+
+            // Header'a Token ekle
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            // API İsteği
+            var response = await Http.GetFromJsonAsync<ServiceResponse<DashboardStatsViewModel>>("api/dashboard/stats");
+
+            if (response != null && response.Succeeded)
+            {
+                stats = response.Data;
+            }
+            else
+            {
+                errorMessage = response?.Message ?? "Veriler alınırken bir sorun oluştu.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Sunucu ile bağlantı kurulamadı. (Hata: {ex.Message})";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

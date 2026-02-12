@@ -1,6 +1,22 @@
-﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+﻿@using AuthServer.Dashboard.Components.Layout
+@using Microsoft.AspNetCore.Components.Authorization
+
+<Router AppAssembly="@typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+            <NotAuthorized>
+                @* HATA BURADAYDI: Yetkisi yoksa Login'e fırlat *@
+                <RedirectToLogin />
+            </NotAuthorized>
+            <Authorizing>
+                <div class="text-center mt-5">Yetkiler kontrol ediliyor...</div>
+            </Authorizing>
+        </AuthorizeRouteView>
     </Found>
+    <NotFound>
+        <PageTitle>Sayfa Bulunamadı</PageTitle>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <p role="alert">Üzgünüm, bu sayfayı bulamadık.</p>
+        </LayoutView>
+    </NotFound>
 </Router>

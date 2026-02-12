@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 var builder = WebApplication.CreateBuilder(args);
-
+builder.WebHost.UseUrls("https://*:7023");
 // --- 1. Service Registration (Servis Kayýtlarý) ---
 builder.Services.AddMemoryCache();
 // Kendi katmanlarýmýzý yüklüyoruz

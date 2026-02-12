@@ -1,8 +1,10 @@
 using AuthServer.Dashboard.Components;
+using AuthServer.Dashboard.Infrastructure.Handlers;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<AuthTokenHandler>();
 // 1. Blazor Servisleri
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -13,17 +15,52 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         options.Cookie.Name = "AuthServer.Dashboard.Cookie";
         options.LoginPath = "/login"; // Giriþ yapmamýþsa buraya at
-        options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(15);
     });
 
 // 3. Authorization ve CascadingState
 builder.Services.AddCascadingAuthenticationState();
 
-// 4. API ile konuþacak HttpClient
-// DÝKKAT: Buraya API'nin çalýþtýðý portu yaz (LaunchSettings.json'dan bakabilirsin)
+builder.Services.AddHttpClient("PublicApi", client =>
+{
+    client.BaseAddress = new Uri("https://localhost:7023/");
+})
+.ConfigurePrimaryHttpMessageHandler(() =>
+{
+    var h = new HttpClientHandler();
+    h.ServerCertificateCustomValidationCallback = (m, c, ch, e) => true;
+    return h;
+});
+
+// ASIL CLÝENT (Handlerlý)
+// Home.razor ve diðer sayfalar bunu kullanacak
 builder.Services.AddHttpClient("AuthApi", client =>
 {
-    client.BaseAddress = new Uri("https://localhost:7023/"); // API URL'si
+    client.BaseAddress = new Uri("https://localhost:7023/");
+})
+.AddHttpMessageHandler<AuthTokenHandler>() // <--- ÝÞTE AJANI BURAYA EKLEDÝK
+.ConfigurePrimaryHttpMessageHandler(() =>
+{
+    var h = new HttpClientHandler();
+    h.ServerCertificateCustomValidationCallback = (m, c, ch, e) => true;
+    return h;
+});
+
+// Blazor için (Home.razor'da @inject HttpClient Http diyorsun ya, onu handler'lý olana yönlendir)
+builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthApi"));
+
+// 2. Blazor Sayfalarý (Home.razor) Ýçin
+// DÝKKAT: Handler'ý "using" bloðu içine almýyoruz, her scope için new'liyoruz.
+builder.Services.AddScoped(sp =>
+{
+    // TAZE HANDLER ÜRETÝMÝ
+    var handler = new HttpClientHandler();
+    handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+
+    var client = new HttpClient(handler);
+    client.BaseAddress = new Uri("https://localhost:7023/"); // API adresin
+
+    return client;
 });
 
 // 5. Controller desteði (Login POST iþlemi için þart)

@@ -36,13 +36,15 @@ namespace AuthServer.Dashboard.Controllers
             // API Response: { "data": { "accessToken": "...", ... }, "succeeded": true }
             var jsonDoc = JsonDocument.Parse(responseContent);
             var token = jsonDoc.RootElement.GetProperty("data").GetProperty("accessToken").GetString();
+            var refreshToken = jsonDoc.RootElement.GetProperty("data").GetProperty("refreshToken").GetString();
 
             // 3. Cookie İçin Claimleri Oluştur
             // Token'ı parse edip içindeki Rolleri vs. de alabilirsin ama şimdilik basit tutalım.
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.Name, model.Email),
-                new Claim("AccessToken", token) // Token'ı cookie içinde saklıyoruz!
+                new Claim("AccessToken", token), // Token'ı cookie içinde saklıyoruz!
+                new Claim("RefreshToken", refreshToken)
             };
 
             var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
