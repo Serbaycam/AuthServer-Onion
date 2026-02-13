@@ -21,8 +21,4 @@
     <ProjectReference Include="..\AuthServer.Identity.Domain\AuthServer.Identity.Domain.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Middlewares\" />
-  </ItemGroup>
-
 </Project>

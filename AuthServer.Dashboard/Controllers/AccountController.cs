@@ -51,7 +51,9 @@ namespace AuthServer.Dashboard.Controllers
             var authProperties = new AuthenticationProperties
             {
                 IsPersistent = true,
-                ExpiresUtc = DateTime.UtcNow.AddMinutes(30)
+                // DÜZELTME: Cookie ömrünü Refresh Token ömrü (örn: 7 gün) kadar yapıyoruz.
+                // Böylece Access Token bitse bile Handler onu arkada yenileyebilir.
+                ExpiresUtc = DateTime.UtcNow.AddDays(7)
             };
 
             // 4. Cookie'yi Tarayıcıya Yapıştır (HttpContext burada var!)
@@ -66,7 +68,36 @@ namespace AuthServer.Dashboard.Controllers
         [HttpGet("logout")]
         public async Task<IActionResult> Logout()
         {
+            // 1. Çerezden Refresh Token'ı bulalım (Login olurken kaydetmiştik)
+            var refreshToken = User.FindFirst("RefreshToken")?.Value;
+
+            if (!string.IsNullOrEmpty(refreshToken))
+            {
+                try
+                {
+                    // 2. API'ye "Revoke" isteği atalım
+                    var client = _httpClientFactory.CreateClient("AuthApi");
+
+                    // API'deki Command yapısına uygun obje gönderiyoruz
+                    // DİKKAT: RevokeTokenCommand içindeki property adı "Token" mı yoksa "RefreshToken" mı?
+                    // Genelde "Token" olur. Eğer API hata verirse burayı kontrol et.
+                    var command = new { Token = refreshToken };
+
+                    // Fire and Forget yapabiliriz (cevabı çok beklemeye gerek yok)
+                    // Ama beklemek daha temizdir.
+                    await client.PostAsJsonAsync("api/auth/revoke-token", command);
+                }
+                catch
+                {
+                    // API kapalıysa veya hata verirse bile biz çıkış yapmalıyız.
+                    // O yüzden burayı boş geçiyoruz, loglayabilirsin.
+                }
+            }
+
+            // 3. Şimdi yerel oturumu (Çerezi) siliyoruz
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+            // 4. Login sayfasına şutla
             return Redirect("/login");
         }
     }

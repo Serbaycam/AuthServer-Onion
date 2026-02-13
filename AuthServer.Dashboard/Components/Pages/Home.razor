@@ -4,11 +4,13 @@
 @using System.Net.Http.Headers
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using System.Net 
 
 @attribute [Authorize]
 
 @inject HttpClient Http
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation  // <--- BU EKSİKTİ
 
 <PageTitle>Dashboard | Ana Sayfa</PageTitle>
 
@@ -186,24 +188,38 @@
 
             if (string.IsNullOrEmpty(token))
             {
-                errorMessage = "Oturum süreniz dolmuş olabilir. Lütfen tekrar giriş yapın.";
-                isLoading = false;
+                // Token yoksa direkt login'e at
+                Navigation.NavigateTo("/login", true);
                 return;
             }
 
-            // Header'a Token ekle
             Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-            // API İsteği
-            var response = await Http.GetFromJsonAsync<ServiceResponse<DashboardStatsViewModel>>("api/dashboard/stats");
+            // API İsteği (Önce ham cevap alıyoruz)
+            var response = await Http.GetAsync("api/dashboard/stats");
 
-            if (response != null && response.Succeeded)
+            // --- YÖNLENDİRME KISMI ---
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                stats = response.Data;
+                Navigation.NavigateTo("/login", true);
+                return;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<ServiceResponse<DashboardStatsViewModel>>();
+                if (result != null && result.Succeeded)
+                {
+                    stats = result.Data;
+                }
+                else
+                {
+                    errorMessage = result?.Message ?? "Veriler alınırken bir sorun oluştu.";
+                }
             }
             else
             {
-                errorMessage = response?.Message ?? "Veriler alınırken bir sorun oluştu.";
+                errorMessage = $"Sunucu hatası: {response.StatusCode}";
             }
         }
         catch (Exception ex)

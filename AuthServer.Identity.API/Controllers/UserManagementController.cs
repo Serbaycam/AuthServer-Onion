@@ -8,6 +8,7 @@ using AuthServer.Identity.Application.Features.Management.Users.Commands.AdminCh
 using AuthServer.Identity.Application.Features.Management.Users.Commands.CreateUserByAdmin;
 using System.Security.Claims;
 using AuthServer.Identity.Application.Features.Management.Users.Commands.UpdateUser;
+using AuthServer.Identity.Application.Features.Auth.Commands.RevokeAll;
 
 namespace AuthServer.Identity.API.Controllers
 {
@@ -70,6 +71,13 @@ namespace AuthServer.Identity.API.Controllers
         // Kullanıcıyı Aktif/Pasif Yap
         [HttpPost("update-status")]
         public async Task<IActionResult> UpdateStatus(UpdateUserStatusCommand command)
+        {
+            var response = await _mediator.Send(command);
+            if (response.Succeeded) return Ok(response);
+            return BadRequest(response);
+        }
+        [HttpPost("revoke-all")]
+        public async Task<IActionResult> RevokeAll([FromBody] RevokeAllTokensCommand command)
         {
             var response = await _mediator.Send(command);
             if (response.Succeeded) return Ok(response);

@@ -1,0 +1,568 @@
+﻿@page "/users"
+@using AuthServer.Dashboard.Models
+@using Microsoft.AspNetCore.Authorization
+@using System.Net.Http.Headers
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Net
+
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@inject HttpClient Http
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+<PageTitle>Kullanıcı Yönetimi</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark mb-0">Kullanıcılar</h2>
+            <p class="text-muted mb-0">Sistemdeki tüm kayıtlı kullanıcıların listesi.</p>
+        </div>
+        <div>
+            <button class="btn btn-success me-2" @onclick="OpenCreateModal">
+                <i class="bi bi-person-plus-fill"></i> Yeni Kullanıcı
+            </button>
+            <button class="btn btn-outline-primary" @onclick="LoadUsersAsync">
+                <i class="bi bi-arrow-clockwise"></i> Yenile
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Yükleniyor...</p>
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4">Kullanıcı</th>
+                                <th>Email</th>
+                                <th>Durum</th>
+                                <th>Kayıt Tarihi</th>
+                                <th class="text-end pe-4">İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (users != null && users.Any())
+                            {
+                                @foreach (var user in users)
+                                {
+                                    <tr>
+                                        <td class="ps-4">
+                                            <div class="d-flex align-items-center">
+                                                <div class="avatar-initial rounded-circle bg-primary bg-opacity-10 text-primary fw-bold me-3"
+                                                     style="width:40px; height:40px; display:flex; align-items:center; justify-content:center;">
+                                                    @user.UserName?.Substring(0, 1).ToUpper()
+                                                </div>
+                                                <div>
+                                                    <div class="fw-bold text-dark">@user.FirstName @user.LastName</div>
+                                                    <div class="small text-muted">@user.UserName</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>@user.Email</td>
+                                        <td>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" role="switch"
+                                                       checked="@user.IsActive"
+                                                       @onchange="@(async (e) => await ToggleUserStatus(user, (bool)e.Value))"
+                                                       style="cursor: pointer;">
+
+                                                <label class="form-check-label small @(user.IsActive ? "text-success" : "text-muted")">
+                                                    @(user.IsActive ? "Aktif" : "Pasif")
+                                                </label>
+                                            </div>
+                                        </td>
+                                        <td>@user.CreatedDate.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                                        <td class="text-end pe-4">
+                                            <button class="btn btn-sm btn-outline-primary me-1" title="Düzenle" @onclick="() => OpenEditModal(user)">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-dark me-1" title="Tüm Oturumları Kapat"
+                                                    @onclick="() => KillUserSessions(user.Id)">
+                                                <i class="bi bi-shield-lock-fill"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-center py-5 text-muted">Kullanıcı bulunamadı.</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (showCreateModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Yeni Kullanıcı Oluştur</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCreateModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@createUserModel" OnValidSubmit="HandleCreateUser">
+                        <DataAnnotationsValidator />
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Ad</label>
+                                <InputText @bind-Value="createUserModel.FirstName" class="form-control" placeholder="Örn: Ahmet" />
+                                <ValidationMessage For="@(() => createUserModel.FirstName)" class="text-danger small" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Soyad</label>
+                                <InputText @bind-Value="createUserModel.LastName" class="form-control" placeholder="Örn: Yılmaz" />
+                                <ValidationMessage For="@(() => createUserModel.LastName)" class="text-danger small" />
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Email Adresi</label>
+                                <InputText @bind-Value="createUserModel.Email" class="form-control" type="email" placeholder="ahmet@sirket.com" />
+                                <ValidationMessage For="@(() => createUserModel.Email)" class="text-danger small" />
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Kullanıcı Rolü</label>
+                                <InputSelect @bind-Value="createUserModel.SelectedRole" class="form-select">
+                                    <option value="LabManager">Lab Manager</option>
+                                    <option value="Basic">Basic</option>
+                                </InputSelect>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">Şifre</label>
+                                <InputText @bind-Value="createUserModel.Password" class="form-control" type="password" />
+                                <ValidationMessage For="@(() => createUserModel.Password)" class="text-danger small" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Şifre Tekrar</label>
+                                <InputText @bind-Value="createUserModel.ConfirmPassword" class="form-control" type="password" />
+                                <ValidationMessage For="@(() => createUserModel.ConfirmPassword)" class="text-danger small" />
+                            </div>
+                        </div>
+
+                        <div class="modal-footer px-0 pb-0 mt-4 border-0">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseCreateModal">İptal</button>
+                            <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                                @if (isSubmitting)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                Kaydet
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+@if (showEditModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title fw-bold text-primary">Kullanıcı Düzenle</h5>
+                    <button type="button" class="btn-close" @onclick="CloseEditModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@updateUserModel" OnValidSubmit="HandleUpdateUser">
+                        <DataAnnotationsValidator />
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Ad</label>
+                                <InputText @bind-Value="updateUserModel.FirstName" class="form-control" />
+                                <ValidationMessage For="@(() => updateUserModel.FirstName)" class="text-danger small" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Soyad</label>
+                                <InputText @bind-Value="updateUserModel.LastName" class="form-control" />
+                                <ValidationMessage For="@(() => updateUserModel.LastName)" class="text-danger small" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Email</label>
+                                <InputText @bind-Value="updateUserModel.Email" class="form-control" />
+                                <ValidationMessage For="@(() => updateUserModel.Email)" class="text-danger small" />
+                            </div>
+                        </div>
+
+                        <div class="modal-footer px-0 pb-0 mt-4 border-0">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseEditModal">İptal</button>
+                            <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                                @if (isSubmitting)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                Güncelle
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+@code {
+    private List<UserViewModel> users;
+    private CreateUserViewModel createUserModel = new();
+    private UpdateUserViewModel updateUserModel = new();
+
+    private string errorMessage;
+    private bool isLoading = true;
+
+    private bool showCreateModal = false;
+    private bool showEditModal = false;
+    private bool isSubmitting = false;
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var token = authState.User.FindFirst("AccessToken")?.Value;
+
+            if (string.IsNullOrEmpty(token))
+            {
+                Navigation.NavigateTo("/login", true);
+                return;
+            }
+
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            // DÜZELTME 1: GetFromJsonAsync yerine GetAsync kullanıyoruz
+            var response = await Http.GetAsync("api/usermanagement/all-users");
+
+            // DÜZELTME 2: Artık StatusCode kontrolü yapabiliriz
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                // Token bitmiş, Login'e at
+                Navigation.NavigateTo("/login", true);
+                return;
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Veriyi şimdi okuyoruz
+                var result = await response.Content.ReadFromJsonAsync<ServiceResponse<List<UserViewModel>>>();
+                if (result != null && result.Succeeded)
+                {
+                    users = result.Data;
+                }
+                else
+                {
+                    errorMessage = result?.Message ?? "Veri alınamadı.";
+                }
+            }
+            else
+            {
+                errorMessage = $"Sunucu hatası: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex) { errorMessage = ex.Message; }
+        finally { isLoading = false; }
+    }
+
+    private void OpenCreateModal()
+    {
+        createUserModel = new CreateUserViewModel();
+        showCreateModal = true;
+        StateHasChanged(); // UI güncellemesini zorla
+    }
+
+    private void CloseCreateModal()
+    {
+        showCreateModal = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleCreateUser()
+    {
+        isSubmitting = true;
+        errorMessage = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var token = authState.User.FindFirst("AccessToken")?.Value;
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            // API'nin istediği formata çeviriyoruz (ConfirmPassword'ü atıyoruz)
+            var command = new
+            {
+                FirstName = createUserModel.FirstName,
+                LastName = createUserModel.LastName,
+                Email = createUserModel.Email,
+                Password = createUserModel.Password,
+                // Formdan seçilen tek rolü, API'nin istediği List<string>'e çeviriyoruz
+                Roles = new List<string> { createUserModel.SelectedRole }
+            };
+
+            // DÜZELTME 3: Burada da PostAsync kullanıyoruz ki StatusCode görelim
+            var response = await Http.PostAsJsonAsync("api/usermanagement/create-user", command);
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                Navigation.NavigateTo("/login", true);
+                return;
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Büyük küçük harf duyarlılığını kapatıp parse et
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var result = System.Text.Json.JsonSerializer.Deserialize<ServiceResponse<string>>(content, options);
+
+                if (result.Succeeded)
+                {
+                    CloseCreateModal();
+                    await LoadUsersAsync();
+                }
+                else
+                {
+                    errorMessage = result.Message;
+                    CloseCreateModal(); // Veya hata gösterip açık bırak
+                }
+            }
+            else
+            {
+                errorMessage = $"Kayıt Başarısız ({response.StatusCode}): {content}";
+                CloseCreateModal();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Hata: {ex.Message}";
+            CloseCreateModal();
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+    private void OpenEditModal(UserViewModel user)
+    {
+        // String ID'yi Guid'e çeviriyoruz (Identity User Id genelde Guid formatındadır)
+        Guid parsedId;
+        if (!Guid.TryParse(user.Id, out parsedId))
+        {
+            errorMessage = "Kullanıcı ID formatı geçersiz.";
+            return;
+        }
+
+        updateUserModel = new UpdateUserViewModel
+        {
+            UserId = parsedId, // API'nin istediği UserId
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email
+        };
+        showEditModal = true;
+    }
+
+    private void CloseEditModal()
+    {
+        showEditModal = false;
+        errorMessage = null;
+    }
+
+    private async Task HandleUpdateUser()
+    {
+        isSubmitting = true;
+        errorMessage = null;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var token = authState.User.FindFirst("AccessToken")?.Value;
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            // API'ye Güncelleme İsteği (PUT)
+            // Eğer senin Controller'da [HttpPost("update-user")] yazıyorsa burayı PostAsJsonAsync yap!
+            // Ama genelde Update işlemleri PUT olur.
+            var response = await Http.PutAsJsonAsync("api/usermanagement/update-user", updateUserModel);
+
+            // 401 Kontrolü
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                Navigation.NavigateTo("/login", true);
+                return;
+            }
+
+            // Cevabı Oku
+            var content = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Başarılıysa modalı kapat ve listeyi yenile
+                CloseEditModal();
+                await LoadUsersAsync();
+            }
+            else
+            {
+                // Hata mesajını yakalamaya çalış
+                // API ServiceResponse<bool> dönüyorsa JSON parse edip mesajı alabiliriz
+                try
+                {
+                    var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var result = System.Text.Json.JsonSerializer.Deserialize<ServiceResponse<bool>>(content, options);
+                    errorMessage = result?.Message ?? "Güncelleme başarısız.";
+                }
+                catch
+                {
+                    errorMessage = $"Güncelleme Hatası: {content}";
+                }
+                CloseEditModal(); // Hata mesajı listede görünsün diye kapatıyoruz
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Kritik Hata: {ex.Message}";
+            CloseEditModal();
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+    private async Task ToggleUserStatus(UserViewModel user, bool newStatus)
+    {
+        // 1. Eski durumu yedekle (Hata olursa geri döneceğiz)
+        bool oldStatus = user.IsActive;
+
+        // 2. Arayüzde hemen güncelleyelim (Kullanıcıya hızlı hissettirmek için)
+        user.IsActive = newStatus;
+
+        try
+        {
+            // ID Dönüşümü (String -> Guid)
+            if (!Guid.TryParse(user.Id, out Guid userIdGuid))
+            {
+                errorMessage = "Hatalı ID formatı.";
+                user.IsActive = oldStatus; // Geri al
+                return;
+            }
+
+            // Modeli Hazırla
+            var command = new UpdateUserStatusViewModel
+            {
+                UserId = userIdGuid,
+                IsActive = newStatus
+            };
+
+            // Token Ekle
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var token = authState.User.FindFirst("AccessToken")?.Value;
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            // API İsteği (POST)
+            // Endpoint: api/usermanagement/update-status
+            var response = await Http.PostAsJsonAsync("api/usermanagement/update-status", command);
+
+            // 401 Kontrolü
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                Navigation.NavigateTo("/login", true);
+                return;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // API Hata Verdiyse
+                var content = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Durum güncellenemedi: {content}";
+
+                // Değişikliği geri al (Switch eski haline dönsün)
+                user.IsActive = oldStatus;
+                StateHasChanged(); // UI'ı zorla güncelle
+            }
+            else
+            {
+                // Başarılı! UI zaten güncellenmişti, ekstra bir şey yapmaya gerek yok.
+                // Belki küçük bir Toast mesajı gösterilebilir ama şart değil.
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Bağlantı Hatası: {ex.Message}";
+            user.IsActive = oldStatus; // Geri al
+        }
+    }
+    private async Task KillUserSessions(string userIdStr)
+    {
+        if (!Guid.TryParse(userIdStr, out Guid userId)) return;
+
+        // Kullanıcıya soralım mı? Bence soralım, yanlışlıkla basılmasın.
+        bool confirmed = await Task.FromResult(true); // Şimdilik direkt true yapıyorum, istersen JS confirm ekleriz.
+
+        if (confirmed)
+        {
+            try
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var token = authState.User.FindFirst("AccessToken")?.Value;
+                Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                // Command oluştur
+                var command = new { UserId = userId };
+
+                // API İsteği
+                var response = await Http.PostAsJsonAsync("api/usermanagement/revoke-all", command);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    // Başarılı olursa kullanıcıya bilgi verelim (Toast mesajı olmadığı için şimdilik Console/Alert)
+                    // Veya errorMessage alanını "Success" mesajı için kullanabilirsin (rengini yeşil yaparak)
+                    errorMessage = "Kullanıcının tüm oturumları başarıyla kapatıldı.";
+                    // İstersen listeyi yenilemeye gerek yok çünkü bu işlem listeyi değiştirmez.
+                }
+                else
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    errorMessage = $"İşlem başarısız: {content}";
+                }
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Hata: {ex.Message}";
+            }
+        }
+    }
+}

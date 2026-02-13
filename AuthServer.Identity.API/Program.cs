@@ -1,3 +1,4 @@
+using AuthServer.Identity.API.Middlewares;
 using AuthServer.Identity.Application;
 using AuthServer.Identity.Domain.Constants;
 using AuthServer.Identity.Domain.Entities;
@@ -79,8 +80,8 @@ app.UseHttpsRedirection();
 // !!! KRÝTÝK BÖLÜM !!!
 // Sýralama: Önce kimlik var mý? (AuthN) -> Sonra yetkisi var mý? (AuthZ)
 app.UseAuthentication();
+app.UseMiddleware<UserStatusMiddleware>();
 app.UseAuthorization();
-
 // Controller'larý endpoint olarak haritala
 app.MapControllers();
 // --- SEEDING BAÞLANGICI ---

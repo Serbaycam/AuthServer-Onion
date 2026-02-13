@@ -1,9 +1,15 @@
 ﻿@inherits LayoutComponentBase
 
-@Body
+<div class="d-flex flex-column min-vh-100 bg-light">
+    <NavMenu />
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    <main class="flex-grow-1">
+        <div class="container py-4">
+            @Body
+        </div>
+    </main>
+
+    <footer class="bg-white text-center py-3 text-muted border-top mt-auto">
+        <small>&copy; 2026 Laboratuvar Yönetim Sistemi</small>
+    </footer>
 </div>

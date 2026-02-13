@@ -31,6 +31,8 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Queries
                     Id = user.Id,
                     FullName = user.FullName,
                     Email = user.Email,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
                     IsActive = user.IsActive,
                     Roles = roles.ToList()
                 });
