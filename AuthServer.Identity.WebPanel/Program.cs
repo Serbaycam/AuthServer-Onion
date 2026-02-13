@@ -1,18 +1,39 @@
 ﻿using System.Security.Claims;
 using AuthServer.Identity.WebPanel.Services;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using System.IO;
+using Microsoft.AspNetCore.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
+
 builder.Services.Configure<AuthApiOptions>(builder.Configuration.GetSection("AuthApi"));
 builder.Services.AddHttpClient<AuthApiClient>();
+
+// DataProtection: dev’de bile sabitlemek iyi (cookie decrypt sorunları biter)
+builder.Services.AddDataProtection()
+    .SetApplicationName("AuthServer.Identity.WebPanel")
+    .PersistKeysToFileSystem(new DirectoryInfo(
+        Path.Combine(builder.Environment.ContentRootPath, "dp_keys")));
+
+// Server-side ticket store (cookie küçülür, tokenlar cookie’ye gömülmez)
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<ITicketStore, MemoryCacheTicketStore>();
+builder.Services.AddOptions<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme)
+    .Configure<ITicketStore>((opt, store) => opt.SessionStore = store);
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o =>
     {
+        o.Cookie.Name = "__Host-AuthServer.WebPanel";
+        o.Cookie.Path = "/";
+        o.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        o.Cookie.SameSite = SameSiteMode.Lax;
+        o.Cookie.HttpOnly = true;
+
         o.LoginPath = "/account/login";
         o.ExpireTimeSpan = TimeSpan.FromDays(7);
         o.SlidingExpiration = true;
@@ -33,79 +54,61 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 
                 var now = DateTimeOffset.UtcNow;
 
-                // Refresh token da bitmişse -> oturumu düşür
+                // Refresh token bitmişse oturum düşsün
                 if (refreshExp.Value <= now)
                 {
                     ctx.RejectPrincipal();
-                    await ctx.HttpContext.SignOutAsync();
+                    await ctx.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
                     return;
                 }
 
-                // Access token 2 dk içinde bitecekse refresh
+                // Access token bitmeye yakın değilse çık
                 if (accessExp.Value - now > TimeSpan.FromMinutes(2))
                     return;
 
-                // session bazlı lock (claim yoksa Name kullan)
+                // lock: aynı session’da paralel refresh çakışmasın
                 var sessionKey = ctx.Principal?.FindFirstValue(ClaimTypes.Sid)
-                                ?? ctx.Principal?.Identity?.Name
-                                ?? "default";
+                                 ?? ctx.Principal?.Identity?.Name
+                                 ?? "default";
 
                 using var _ = await SessionRefreshLock.AcquireAsync(sessionKey);
 
-                // Lock aldıktan sonra tekrar oku (başka request refresh etmiş olabilir)
-                var auth2 = await ctx.HttpContext.AuthenticateAsync();
-                var props2 = auth2.Properties;
-                if (props2 is null) return;
+                // Lock aldıktan sonra tekrar kontrol (bir başka request yenilemiş olabilir)
+                accessToken = AuthTicketTokenStore.GetAccessToken(props);
+                refreshToken = AuthTicketTokenStore.GetRefreshToken(props);
+                accessExp = AuthTicketTokenStore.GetAccessExp(props);
 
-                var at2 = AuthTicketTokenStore.GetAccessToken(props2);
-                var rt2 = AuthTicketTokenStore.GetRefreshToken(props2);
-                var ax2 = AuthTicketTokenStore.GetAccessExp(props2);
-
-                if (string.IsNullOrEmpty(at2) || string.IsNullOrEmpty(rt2) || ax2 is null)
+                if (string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(refreshToken) || accessExp is null)
                     return;
 
-                if (ax2.Value - DateTimeOffset.UtcNow > TimeSpan.FromMinutes(2))
-                    return; // zaten yenilenmiş
+                if (accessExp.Value - DateTimeOffset.UtcNow > TimeSpan.FromMinutes(2))
+                    return;
 
                 var api = ctx.HttpContext.RequestServices.GetRequiredService<AuthApiClient>();
-                var refreshed = await api.RefreshAsync(at2, rt2);
+                var refreshed = await api.RefreshAsync(accessToken, refreshToken);
 
                 if (refreshed is null)
                 {
-                    // Refresh başarısız => login'e düşsün (sonsuz 401 döngüsü kırılır)
                     ctx.RejectPrincipal();
-                    await ctx.HttpContext.SignOutAsync();
+                    await ctx.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
                     return;
                 }
 
-                // API DateTime kind belirsiz gelirse UTC varsayalım
-                DateTimeOffset accessExpUtc = ToUtc(refreshed.AccessTokenExpiration);
-                DateTimeOffset refreshExpUtc = ToUtc(refreshed.RefreshTokenExpiration);
+                AuthTicketTokenStore.Set(
+                    props,
+                    refreshed.AccessToken,
+                    refreshed.RefreshToken,
+                    ToUtc(refreshed.AccessTokenExpiration),
+                    ToUtc(refreshed.RefreshTokenExpiration));
 
-                AuthTicketTokenStore.Set(props2, refreshed.AccessToken, refreshed.RefreshToken, accessExpUtc, refreshExpUtc);
-
-                ctx.ShouldRenew = true; // Cookie yeniden yazılsın
+                ctx.ShouldRenew = true; // cookie + sessionstore renew
             }
         };
-        o.Events.OnSigningOut = async ctx =>
-        {
-            var props = ctx.Properties;
-            if (props is null) return;
 
-            var rt = AuthTicketTokenStore.GetRefreshToken(props);
-            var at = AuthTicketTokenStore.GetAccessToken(props);
-
-            if (!string.IsNullOrWhiteSpace(rt))
-            {
-                var api = ctx.HttpContext.RequestServices.GetRequiredService<AuthApiClient>();
-                await api.RevokeAsync(rt, bearerAccessToken: at);
-            }
-        };
         static DateTimeOffset ToUtc(DateTime dt)
         {
             if (dt.Kind == DateTimeKind.Utc) return new DateTimeOffset(dt);
-            if (dt.Kind == DateTimeKind.Local) return dt.ToUniversalTime();
-            // Unspecified -> UTC varsay
+            if (dt.Kind == DateTimeKind.Local) return new DateTimeOffset(dt.ToUniversalTime());
             return new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
         }
     });
@@ -128,6 +131,6 @@ app.UseAuthorization();
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
+    pattern: "{controller=Dashboard}/{action=Dashboard}/{id?}");
 
 app.Run();

@@ -17,6 +17,7 @@ public sealed class AccountController : Controller
     [HttpGet]
     public IActionResult Login(string? returnUrl = null)
     {
+
         ViewBag.ReturnUrl = returnUrl ?? "/";
         return View();
     }
