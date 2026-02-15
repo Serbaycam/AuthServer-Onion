@@ -13,12 +13,6 @@ builder.Services.AddControllersWithViews();
 builder.Services.Configure<AuthApiOptions>(builder.Configuration.GetSection("AuthApi"));
 builder.Services.AddHttpClient<AuthApiClient>();
 
-// DataProtection: dev’de bile sabitlemek iyi (cookie decrypt sorunları biter)
-builder.Services.AddDataProtection()
-    .SetApplicationName("AuthServer.Identity.WebPanel")
-    .PersistKeysToFileSystem(new DirectoryInfo(
-        Path.Combine(builder.Environment.ContentRootPath, "dp_keys")));
-
 // Server-side ticket store (cookie küçülür, tokenlar cookie’ye gömülmez)
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ITicketStore, MemoryCacheTicketStore>();
@@ -33,7 +27,6 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         o.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         o.Cookie.SameSite = SameSiteMode.Lax;
         o.Cookie.HttpOnly = true;
-
         o.LoginPath = "/account/login";
         o.ExpireTimeSpan = TimeSpan.FromDays(7);
         o.SlidingExpiration = true;

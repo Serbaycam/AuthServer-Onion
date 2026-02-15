@@ -10,6 +10,7 @@ namespace AuthServer.Identity.WebPanel.Services
         public string LoginPath { get; set; } = "";
         public string RefreshPath { get; set; } = "";
         public string RevokePath { get; set; } = "";
+        public string DashboardPath { get; set; } = "";
     }
 
     public sealed class AuthApiClient
@@ -63,7 +64,6 @@ namespace AuthServer.Identity.WebPanel.Services
                 Content = JsonContent.Create(new RevokeTokenRequest { Token = token }, options: JsonOpt)
             };
 
-            // Eğer endpoint [Authorize] isterse diye opsiyonel:
             if (!string.IsNullOrWhiteSpace(bearerAccessToken))
                 req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerAccessToken);
 
@@ -73,6 +73,17 @@ namespace AuthServer.Identity.WebPanel.Services
             // wrapper: ServiceResponse<bool>
             var wrapper = await resp.Content.ReadFromJsonAsync<ServiceResponse<bool>>(JsonOpt, ct);
             return wrapper?.Succeeded == true;
+        }
+        public async Task<DashboardStatsDto?> GetStatsAsync(string bearerAccessToken, CancellationToken ct = default)
+        {
+            var url = new Uri(new Uri(_opt.BaseUrl), _opt.DashboardPath);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerAccessToken);
+            var resp = await _http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            var wrapper = await resp.Content.ReadFromJsonAsync<ServiceResponse<DashboardStatsDto>>(JsonOpt, ct);
+            if (wrapper?.Succeeded != true || wrapper.Data is null) return null;
+            return wrapper.Data;
         }
     }
 }
