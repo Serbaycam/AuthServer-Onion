@@ -1,0 +1,46 @@
+@using AuthServer.Identity.WebPanel.Models
+@model List<RoleDto>
+@{
+    ViewData["Title"] = "Roller";
+}
+
+<h2>Roller</h2>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<div class="mb-3">
+    <a class="btn btn-primary" href="/Roles/Create">Yeni Rol</a>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Rol Adı</th>
+            <th style="width: 320px;">İşlemler</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var r in Model)
+    {
+        <tr>
+            <td>@r.Name</td>
+            <td>
+                <a class="btn btn-sm btn-secondary" href="/Roles/Edit/@r.Id">Düzenle</a>
+                <a class="btn btn-sm btn-info" href="/Roles/Permissions/@r.Id">Yetkiler</a>
+
+                <form method="post" action="/Roles/Delete/@r.Id" style="display:inline;">
+                    @Html.AntiForgeryToken()
+                    <button class="btn btn-sm btn-danger" type="submit" onclick="return confirm('Rol silinsin mi?')">Sil</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

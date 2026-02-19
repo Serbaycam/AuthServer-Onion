@@ -1,0 +1,27 @@
+@model AuthServer.Identity.WebPanel.Models.Management.CreateRoleVm
+@{
+    ViewData["Title"] = "Rol Oluştur";
+}
+
+<h2>Rol Oluştur</h2>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alert alert-danger">
+        @foreach (var e in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+        {
+            <div>@e.ErrorMessage</div>
+        }
+    </div>
+}
+
+<form method="post">
+    @Html.AntiForgeryToken()
+    <div class="mb-3">
+        <label class="form-label">Rol Adı</label>
+        <input class="form-control" name="RoleName" value="@Model.RoleName" />
+    </div>
+
+    <button class="btn btn-primary" type="submit">Oluştur</button>
+    <a class="btn btn-secondary" href="/Roles">İptal</a>
+</form>

@@ -1,0 +1,39 @@
+@model AuthServer.Identity.WebPanel.Models.Management.UpdateUserVm
+@{
+    ViewData["Title"] = "Kullanıcı Düzenle";
+}
+
+<h2>Kullanıcı Düzenle</h2>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alert alert-danger">
+        @foreach (var e in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+        {
+            <div>@e.ErrorMessage</div>
+        }
+    </div>
+}
+
+<form method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="UserId" value="@Model.UserId" />
+
+    <div class="mb-3">
+        <label class="form-label">Ad</label>
+        <input class="form-control" name="FirstName" value="@Model.FirstName" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Soyad</label>
+        <input class="form-control" name="LastName" value="@Model.LastName" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">E-posta</label>
+        <input class="form-control" name="Email" value="@Model.Email" />
+    </div>
+
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-secondary" href="/Users">İptal</a>
+</form>

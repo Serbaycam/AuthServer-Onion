@@ -1,0 +1,48 @@
+@model AuthServer.Identity.WebPanel.Models.Management.RolePermissionsVm
+@{
+    ViewData["Title"] = "Rol Yetkileri";
+    var grouped = Model.Permissions.GroupBy(p => p.Module).ToList();
+}
+
+<h2>Rol Yetkileri</h2>
+<p><strong>@Model.RoleName</strong> rolü için yetkiler</p>
+
+<form method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="RoleId" value="@Model.RoleId" />
+    <input type="hidden" name="RoleName" value="@Model.RoleName" />
+
+    @for (int i = 0; i < Model.Permissions.Count; i++)
+    {
+        <input type="hidden" name="Permissions[@i].Value" value="@Model.Permissions[i].Value" />
+        <input type="hidden" name="Permissions[@i].Module" value="@Model.Permissions[i].Module" />
+        <input type="hidden" name="Permissions[@i].Action" value="@Model.Permissions[i].Action" />
+    }
+
+    @* UI *@
+    @foreach (var g in grouped)
+    {
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>@g.Key</strong>
+            </div>
+            <div class="card-body">
+                @foreach (var p in g)
+                {
+                    var idx = Model.Permissions.FindIndex(x => x.Value == p.Value);
+                    <div class="form-check">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="Permissions[@idx].Selected"
+                               value="true"
+                               @(p.Selected ? "checked" : "") />
+                        <label class="form-check-label">@p.Action <small class="text-muted">(@p.Value)</small></label>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <button class="btn btn-primary" type="submit">Yetkileri Kaydet</button>
+    <a class="btn btn-secondary" href="/Roles">Geri</a>
+</form>

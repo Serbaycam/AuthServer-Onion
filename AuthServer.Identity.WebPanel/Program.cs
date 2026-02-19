@@ -12,7 +12,8 @@ builder.Services.AddControllersWithViews();
 
 builder.Services.Configure<AuthApiOptions>(builder.Configuration.GetSection("AuthApi"));
 builder.Services.AddHttpClient<AuthApiClient>();
-
+builder.Services.AddHttpClient<AuthApiClient>();
+builder.Services.AddHttpClient<ManagementApiClient>();
 // Server-side ticket store (cookie küçülür, tokenlar cookie’ye gömülmez)
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ITicketStore, MemoryCacheTicketStore>();
@@ -124,6 +125,6 @@ app.UseAuthorization();
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Dashboard}/{action=Dashboard}/{id?}");
+    pattern: "{controller=Dashboard}/{action=index}/{id?}");
 
 app.Run();

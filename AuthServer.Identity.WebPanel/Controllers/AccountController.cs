@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace IdmsUi.Controllers;
 
@@ -39,7 +40,35 @@ public sealed class AccountController : Controller
             new Claim(ClaimTypes.Name, email),
             new Claim(ClaimTypes.Sid, Guid.NewGuid().ToString("N")) // refresh lock için
         };
+        try
+        {
+            var handler = new JwtSecurityTokenHandler();
+            var jwt = handler.ReadJwtToken(token.AccessToken);
 
+            // NameIdentifier (API audit için işine de yarar)
+            var nameId =
+                jwt.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value
+                ?? jwt.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
+
+            if (!string.IsNullOrWhiteSpace(nameId))
+                claims.Add(new Claim(ClaimTypes.NameIdentifier, nameId));
+
+            // Role claimleri (farklı issuer’larda type değişebiliyor)
+            var roleValues = jwt.Claims
+                .Where(c =>
+                    c.Type == ClaimTypes.Role ||
+                    c.Type == "role" ||
+                    c.Type.EndsWith("/role"))
+                .Select(c => c.Value)
+                .Distinct();
+
+            foreach (var r in roleValues)
+                claims.Add(new Claim(ClaimTypes.Role, r));
+        }
+        catch
+        {
+            // JWT parse edilemezse sessiz geç (UI yine çalışır, sadece role bazlı menü/policy devre dışı kalır)
+        }
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
 
         var props = new AuthenticationProperties

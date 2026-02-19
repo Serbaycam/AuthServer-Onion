@@ -2,6 +2,7 @@
 using AuthServer.Identity.Application.Features.Management.Roles.Commands.DeleteRole;
 using AuthServer.Identity.Application.Features.Management.Roles.Commands.UpdateRole;
 using AuthServer.Identity.Application.Features.Management.Roles.Commands.UpdateRolePermissions;
+using AuthServer.Identity.Application.Features.Management.Roles.Queries.GetRolePermissions;
 using AuthServer.Identity.Application.Features.Management.Roles.Queries.GetRoles;
 using AuthServer.Identity.Application.Wrappers;
 using MediatR;
@@ -75,6 +76,11 @@ namespace AuthServer.Identity.API.Controllers
             command.IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
 
             return Ok(await _mediator.Send(command));
+        }
+        [HttpGet("role-permissions/{id}")]
+        public async Task<IActionResult> GetRolePermissions(string id)
+        {
+            return Ok(await _mediator.Send(new GetRolePermissionsQuery { RoleId = id }));
         }
     }
 }
