@@ -1,23 +1,25 @@
-# AuthServer-Onion
+# AuthServer-Onion (TR | EN)
 
-**TR | EN** — Onion/Clean Architecture yaklaşımıyla tasarlanmış **JWT tabanlı bir Auth (Identity) API** ve onu kullanan **Blazor Dashboard** örneği.
+Onion/Clean Architecture yaklaşımıyla tasarlanmış **JWT tabanlı bir Identity/Auth API** ve onu kullanan **Admin Web Panel (AuthServer.Identity.WebPanel)** örneği.
 
-> Bu repo; ASP.NET Identity + EF Core + JWT Access Token + Refresh Token (rotation) + Audit Log gibi temel kimlik/doğrulama ihtiyaçlarını, katmanlı (Onion) mimariyle örnekler.
+- API: ASP.NET Core + Identity + EF Core + MediatR (CQRS) + JWT Access Token + Refresh Token (Rotation) + Audit Log ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Auth/Commands/Login/LoginCommandHandler.cs))  
+- WebPanel: ASP.NET Core MVC + Cookie Auth (server-side ticket store) + otomatik token refresh ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Program.cs))  
 
 ---
 
-## İçindekiler / Table of Contents
+## İçindekiler
 
 - [Özet](#özet)
 - [Mimari](#mimari)
-- [Proje Yapısı](#proje-yapısı)
-- [Özellikler](#özellikler)
+- [Çözüm / Proje Yapısı](#çözüm--proje-yapısı)
+- [Öne Çıkan Özellikler](#öne-çıkan-özellikler)
 - [Gereksinimler](#gereksinimler)
 - [Kurulum](#kurulum)
 - [Çalıştırma](#çalıştırma)
-- [API Kullanımı](#api-kullanımı)
+- [Konfigürasyon](#konfigürasyon)
+- [API Endpointleri](#api-endpointleri)
+- [WebPanel](#webpanel)
 - [Güvenlik Notları](#güvenlik-notları)
-- [Yetkilendirme (Permission) Yapısı](#yetkilendirme-permission-yapısı)
 - [Veritabanı](#veritabanı)
 - [Lisans](#lisans)
 
@@ -25,76 +27,95 @@
 
 ## Özet
 
-Bu çözüm; **kullanıcı doğrulama** ve **JWT token üretimi** yapan bir Auth API ve örnek bir **Dashboard** içerir. Proje; domain kurallarını, iş mantığını ve dış bağımlılıkları ayrı katmanlarda tutarak test edilebilirlik ve sürdürülebilirlik hedefler.
+Bu repo; kimlik doğrulama (login) ve token yönetimi (refresh/revoke) yapan bir Auth API + yönetim işlemleri (kullanıcı/rol/izin) + bunları kullanan bir WebPanel örneği içerir.
+
+> Not: Proje .NET `net10.0` hedefli. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/AuthServer.Identity.API.csproj))
 
 ---
 
 ## Mimari
 
-Onion/Clean yaklaşımında bağımlılıklar dıştan içe doğru akar:
+Onion/Clean yaklaşımında bağımlılıklar dıştan içe akar:
 
 ```
-┌───────────────────────────────┐
-│        Presentation           │  AuthServer.Identity.API
-│  (Controllers / Endpoints)    │  AuthServer.Dashboard
-└───────────────▲───────────────┘
-                │
-┌───────────────┴───────────────┐
-│          Application          │  CQRS / MediatR / DTO / Validation
-└───────────────▲───────────────┘
-                │
-┌───────────────┴───────────────┐
-│            Domain             │  Entities / Rules
-└───────────────▲───────────────┘
-                │
-┌───────────────┴───────────────┐
-│   Infrastructure & Persistence │  JWT, Audit, EF Core, Identity
-└───────────────────────────────┘
+┌────────────────────────────────────────┐
+│ Presentation                            │
+│  - AuthServer.Identity.API              │
+│  - AuthServer.Identity.WebPanel         │
+└───────────────────────▲────────────────┘
+                        │
+┌───────────────────────┴────────────────┐
+│ Application                             │
+│  - CQRS / MediatR                        │
+│  - DTO / Wrappers (ServiceResponse<T>)  │
+└───────────────────────▲────────────────┘
+                        │
+┌───────────────────────┴────────────────┐
+│ Domain                                  │
+│  - Entities (AppUser, RefreshToken, …)  │
+│  - Constants (Permissions)              │
+└───────────────────────▲────────────────┘
+                        │
+┌───────────────────────┴────────────────┐
+│ Infrastructure & Persistence            │
+│  - JWT TokenService                     │
+│  - AuditService                         │
+│  - EF Core + IdentityDbContext          │
+└────────────────────────────────────────┘
 ```
 
 ---
 
-## Proje Yapısı
+## Çözüm / Proje Yapısı
+
+Solution içeriği: ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.sln))
 
 - **AuthServer.Identity.API**  
-  REST API katmanı. `AuthController` üzerinden login/refresh/revoke gibi uçları sunar.
-
-- **AuthServer.Identity.Domain**  
-  Çekirdek varlıklar: `AppUser`, `RefreshToken`, `AuditLog` vb.
+  REST API. Auth + yönetim endpointleri. (Controllers) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/AuthController.cs))
 
 - **AuthServer.Identity.Application**  
-  Use-case’ler / iş mantığı: MediatR command/handler yapıları, wrapper response tipi vb.
+  Use-case’ler (MediatR commands/queries), wrapper response, DTO’lar. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Auth/Commands/Login/LoginCommand.cs))
+
+- **AuthServer.Identity.Domain**  
+  Temel entity ve constants. (AppUser, RefreshToken, AuditLog, Permissions) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Domain/Entities/AppUser.cs))
 
 - **AuthServer.Identity.Infrastructure**  
-  Token üretimi, audit servisi ve permission authorization handler gibi dış bağımlılıklar.
+  Token üretimi, audit servisleri vb. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Infrastructure/Services/TokenService.cs))
 
 - **AuthServer.Identity.Persistence**  
-  EF Core + IdentityDbContext (`AppDbContext`), migrations ve DB erişimi.
+  EF Core + IdentityDbContext, RefreshTokens/AuditLogs tabloları. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Persistence/Context/AppDbContext.cs))
 
-- **AuthServer.Dashboard**  
-  Blazor tabanlı bir dashboard örneği (MudBlazor + LocalStorage vb. paketleri içerir).
+- **AuthServer.Identity.WebPanel**  
+  Admin panel (ASP.NET Core MVC). Cookie auth + server-side ticket store + otomatik refresh. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Program.cs))
 
 ---
 
-## Özellikler
+## Öne Çıkan Özellikler
 
-- ✅ **JWT Access Token** üretimi (Issuer/Audience/Secret üzerinden)
-- ✅ **Refresh Token** üretimi + DB’de saklama
-- ✅ **Refresh Token Rotation** (yenilemede eski token’ı revoke edip yenisini üretme)
-- ✅ **Şüpheli token theft** senaryosunda tüm aktif token’ları revoke etme
-- ✅ **Audit Log** (Login ve güvenlik aksiyonları için kayıt)
-- ✅ **Role tabanlı** (roles claim) token üretimi
-- ✅ **Permission** (role claim type = `permission`) kontrolü + **cache** desteği
+### Auth / Token
+- ✅ JWT Access Token üretimi (sub/email/jti/fullName + roles claim) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Infrastructure/Services/TokenService.cs))  
+- ✅ Refresh Token üretimi ve DB’de saklama ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Auth/Commands/Login/LoginCommandHandler.cs))  
+- ✅ **Refresh Token Rotation**: refresh edildiğinde eski token revoke edilir, yeni token üretilir ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Auth/Commands/RefreshToken/RefreshTokenCommandHandler.cs))  
+- ✅ **Reuse Detection (Token Theft)**: revoke edilmiş refresh token tekrar kullanılırsa ilgili kullanıcının aktif oturumları kapatılır ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Auth/Commands/RefreshToken/RefreshTokenCommandHandler.cs))  
+
+### Yönetim
+- ✅ SuperAdmin’e özel dashboard stats ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/DashboardController.cs))  
+- ✅ User management: kullanıcı oluşturma/güncelleme/rol atama/aktif-pasif/force logout ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/UserManagementController.cs))  
+- ✅ Role management: rol CRUD + role-permission yönetimi (claim type = `permission`) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/RoleManagementController.cs))  
+- ✅ Audit Log: login + admin aksiyonları loglanır ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Auth/Commands/Login/LoginCommandHandler.cs))  
+
+### WebPanel
+- ✅ Cookie güvenliği: `__Host-` prefix, HttpOnly, Secure, Sliding Expiration ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Program.cs))  
+- ✅ Token’ları cookie’ye gömmek yerine **server-side ticket store** (MemoryCache) kullanır ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Program.cs))  
+- ✅ Access token süresi dolmaya yaklaşınca otomatik refresh + session bazlı lock (paralel refresh çakışmasını engeller) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Program.cs))  
 
 ---
 
 ## Gereksinimler
 
-- **.NET SDK 10**
-- **SQL Server / LocalDB**
-  - Varsayılan bağlantı: `(localdb)\MSSQLLocalDB`
-- (Opsiyonel) EF Core CLI:
-  - `dotnet tool install --global dotnet-ef`
+- .NET SDK (`net10.0`) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/AuthServer.Identity.API.csproj))  
+- SQL Server / LocalDB (varsayılan connection string LocalDB) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/appsettings.json))  
+- (Opsiyonel) EF Core CLI: `dotnet tool install --global dotnet-ef`
 
 ---
 
@@ -106,145 +127,184 @@ git clone https://github.com/Serbaycam/AuthServer-Onion.git
 cd AuthServer-Onion
 ```
 
-2) API ayarlarını kontrol edin:
-- `AuthServer.Identity.API/appsettings.json`
-  - `ConnectionStrings:DefaultConnection`
-  - `JwtSettings:*` (özellikle `Secret`)
+2) API config kontrol edin:
+- `AuthServer.Identity.API/appsettings.json`  
+  - `ConnectionStrings:DefaultConnection`  
+  - `JwtSettings:*` (özellikle `Secret`) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/appsettings.json))  
 
-3) Veritabanını oluşturun / migrations uygulayın:
-
+3) DB migrate:
 ```bash
-dotnet ef database update ^
-  --project AuthServer.Identity.Persistence ^
+dotnet ef database update \
+  --project AuthServer.Identity.Persistence \
   --startup-project AuthServer.Identity.API
 ```
-
-> Linux/macOS kullanıyorsanız `^` yerine `\` satır devamı veya tek satır kullanın.
+> Windows PowerShell için `\` yerine `^` kullanabilirsiniz.
 
 ---
 
 ## Çalıştırma
 
 ### Auth API
-
 ```bash
 dotnet run --project AuthServer.Identity.API
 ```
+Dev URL: `https://localhost:7023` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Properties/launchSettings.json))
 
-Varsayılan (Development) URL:
-- `https://localhost:7023`
-
-### Dashboard
-
+### WebPanel
 ```bash
-dotnet run --project AuthServer.Dashboard
+dotnet run --project AuthServer.Identity.WebPanel
 ```
-
-Varsayılan (Development) URL:
-- `https://localhost:5000`
+Dev URL: `https://localhost:5000` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Properties/launchSettings.json))
 
 ---
 
-## API Kullanımı
+## Konfigürasyon
 
-> Not: Bu repo sürümünde **register endpoint’i yok**. Login için DB’de bir kullanıcı bulunması gerekir.  
-> İlk kullanıcıyı oluşturmak için genelde:
-> - bir **seed** eklenir (Program.cs içine) veya
-> - Dashboard üzerinden kullanıcı yönetimi sağlanır (uygulanmışsa) veya
-> - geçici bir admin oluşturma komutu eklenir.
+### API (AuthServer.Identity.API/appsettings.json)
+Örnek içerik: ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/appsettings.json))
 
-### 1) Login
+- `ConnectionStrings:DefaultConnection`
+- `JwtSettings:Secret`
+- `JwtSettings:Issuer`
+- `JwtSettings:Audience`
+- `JwtSettings:AccessTokenExpirationMinutes`
+- `JwtSettings:RefreshTokenExpirationDays`
 
-**POST** `https://localhost:7023/api/auth/login`
+> Production için `JwtSettings:Secret` değerini repo içinde tutmayın (user-secrets / env var / vault).
 
-Body:
-```json
-{
-  "email": "user@example.com",
-  "password": "YourPassword!"
-}
-```
+### WebPanel (AuthServer.Identity.WebPanel/appsettings.json)
+WebPanel, API endpointlerini buradan okur: ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/appsettings.json))  
+- `AuthApi:BaseUrl` (default: `https://localhost:7023/`)
+- `AuthApi:*Path` (login/refresh/revoke + dashboard + user/role/permission endpointleri)
 
-Başarılı yanıt (örnek):
-```json
-{
-  "succeeded": true,
-  "message": "Giriş başarılı.",
-  "data": {
-    "accessToken": "eyJhbGciOi...",
-    "accessTokenExpiration": "2026-02-13T12:34:56Z",
-    "refreshToken": "base64...",
-    "refreshTokenExpiration": "2026-02-20T12:34:56Z"
-  }
-}
-```
+---
 
-### 2) Refresh Token
+## API Endpointleri
 
-**POST** `https://localhost:7023/api/auth/refresh-token`
+> Tüm response’lar genelde `ServiceResponse<T>` wrapper’ı döner:  
+> `succeeded`, `message`, `data`, `errors` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Wrappers/ServiceResponse.cs))
+
+### Auth
+Base route: `/api/auth` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/AuthController.cs))
+
+#### 1) Login
+`POST /api/auth/login`
 
 Body:
 ```json
-{
-  "accessToken": "EXPIRED_OR_VALID_ACCESS_TOKEN",
-  "refreshToken": "REFRESH_TOKEN"
-}
+{ "email": "user@example.com", "password": "YourPassword!" }
 ```
 
-> Refresh sırasında **rotation** uygulanır: eski refresh token revoke edilir, yenisi üretilir.
-
-### 3) Revoke Token
-
-**POST** `https://localhost:7023/api/auth/revoke-token`
+#### 2) Refresh Token
+`POST /api/auth/refresh-token`
 
 Body:
 ```json
-{
-  "token": "REFRESH_TOKEN"
-}
+{ "accessToken": "EXPIRED_OR_VALID_ACCESS_TOKEN", "refreshToken": "REFRESH_TOKEN" }
 ```
+
+- Rotation uygulanır, eski refresh token revoke edilir. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Auth/Commands/RefreshToken/RefreshTokenCommandHandler.cs))
+
+#### 3) Revoke Token
+`POST /api/auth/revoke-token`
+
+Body:
+```json
+{ "token": "REFRESH_TOKEN" }
+```
+Controller command’e IP adresini de ekler. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/AuthController.cs))
+
+---
+
+### Dashboard (SuperAdmin)
+Base route: `/api/dashboard` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/DashboardController.cs))
+
+- `GET /api/dashboard/stats`
+
+> `[Authorize(Roles="SuperAdmin")]` ile korunur. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/DashboardController.cs))
+
+---
+
+### User Management (SuperAdmin)
+Base route: `/api/usermanagement` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/UserManagementController.cs))
+
+- `GET /api/usermanagement/all-users`
+- `POST /api/usermanagement/create-user`
+- `PUT /api/usermanagement/update-user`
+- `POST /api/usermanagement/change-password`
+- `POST /api/usermanagement/assign-roles`
+- `POST /api/usermanagement/update-status`
+- `POST /api/usermanagement/revoke-all`
+
+> Hepsi SuperAdmin role gerektirir. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/UserManagementController.cs))
+
+---
+
+### Role & Permission Management (SuperAdmin)
+Base route: `/api/rolemanagement` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/RoleManagementController.cs))
+
+- `GET /api/rolemanagement/roles`
+- `POST /api/rolemanagement/role`
+- `PUT /api/rolemanagement/role`
+- `DELETE /api/rolemanagement/role/{id}`
+- `GET /api/rolemanagement/permissions` (static permission listesi reflection ile okunur) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/RoleManagementController.cs))
+- `POST /api/rolemanagement/permissions` (role’a permission claim set eder) ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/RoleManagementController.cs))
+- `GET /api/rolemanagement/role-permissions/{id}` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/RoleManagementController.cs))
+
+**Permission modeli**
+- Permission’lar role claim olarak tutulur: `Type = "permission"` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Management/Roles/Commands/UpdateRolePermissions/UpdateRolePermissionsHandler.cs))  
+- Permission örnekleri: `Permissions.Laboratories.View` vb. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Domain/Constants/Permissions.cs))  
+
+---
+
+## WebPanel
+
+WebPanel; kullanıcı girişini API üzerinden yapar ve JWT içinden role’leri okuyup cookie claims olarak ekler. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Controllers/AccountController.cs))
+
+### Neden cookie + ticket store?
+- Cookie “küçülür”; access/refresh token cookie içine gömülmez
+- Tokenlar server-side MemoryCache ticket store’da saklanır ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Program.cs))
+
+### Otomatik Refresh Mantığı
+- Access token bitimine 2 dk kala refresh dener
+- Refresh token bitmişse oturumu düşürür
+- Aynı session’da paralel refresh çağrılarını lock ile engeller ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Program.cs))
 
 ---
 
 ## Güvenlik Notları
 
-- 🔒 `JwtSettings:Secret` içeriği repoda **örnek** olarak bulunur; production’da mutlaka:
-  - uzun ve güçlü bir secret kullanın,
-  - secret’ı **user-secrets / env var / vault** gibi güvenli bir yerde saklayın.
-- 🔐 Refresh token’ı istemci tarafında saklayacaksanız mümkünse **HttpOnly Cookie** kullanın.
-- 🌐 Reverse proxy arkasında çalıştıracaksanız gerçek IP için `X-Forwarded-For` header’ını yapılandırın.
-- ✅ HTTPS zorunlu tutun.
-
----
-
-## Yetkilendirme (Permission) Yapısı
-
-Projede örnek bir permission handler vardır:
-
-- Permission’lar, **role claim** olarak tutulur:  
-  - `Type = "permission"`
-  - `Value = "Some.Permission.Name"`
-
-- `SuperAdmin` rolü varsa permission kontrolü bypass edilir.
-
-- Permission listesi kullanıcı bazında **MemoryCache** ile 30 dakika cache’lenir.
-
-> Genişletme önerisi: Policy isimlendirme standardı (örn. `Permission:Catalog.Read`) kurup, dinamik policy provider ekleyerek daha esnek bir yapı kurabilirsiniz.
+- JWT secret’ı production’da güvenli saklayın (env/vault/user-secrets). ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/appsettings.json))  
+- HTTPS zorunlu tutun (WebPanel cookie `SecurePolicy.Always`). ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Program.cs))  
+- Refresh token theft senaryosu için reuse detection mevcut. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Auth/Commands/RefreshToken/RefreshTokenCommandHandler.cs))  
+- Reverse proxy arkasında IP için `X-Forwarded-For` değerlendiriliyor. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Controllers/AuthController.cs))  
 
 ---
 
 ## Veritabanı
 
-DB şeması:
+`AppDbContext` içerisinde:
 - ASP.NET Identity tabloları (AspNetUsers, AspNetRoles, …)
 - `RefreshTokens`
-- `AuditLogs`
+- `AuditLogs` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Persistence/Context/AppDbContext.cs))
 
-Varsayılan connection string (Development):
-- `(localdb)\MSSQLLocalDB` / `AuthServerIdentityDb`
+RefreshToken mapping örneği: tablo adı `RefreshTokens` ve ilişki `User -> RefreshTokens`. ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Persistence/Configurations/RefreshTokenConfiguration.cs))  
 
 ---
 
 ## Lisans
 
-MIT — detay için `LICENSE` dosyasına bakın.
+MIT. (Detay için `LICENSE`) ([github.com](https://github.com/Serbaycam/AuthServer-Onion))
+
+---
+
+# EN (Short)
+
+JWT-based Identity/Auth API + Admin WebPanel built with Onion/Clean Architecture.
+
+- API: ASP.NET Core, Identity, EF Core, MediatR CQRS, JWT + Refresh Token Rotation + Audit Log ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.Application/Features/Auth/Commands/Login/LoginCommandHandler.cs))  
+- WebPanel: ASP.NET Core MVC, Cookie Auth with server-side ticket store, automatic refresh ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Program.cs))  
+
+Default URLs:
+- API: `https://localhost:7023` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.API/Properties/launchSettings.json))
+- WebPanel: `https://localhost:5000` ([raw.githubusercontent.com](https://raw.githubusercontent.com/Serbaycam/AuthServer-Onion/master/AuthServer.Identity.WebPanel/Properties/launchSettings.json))
