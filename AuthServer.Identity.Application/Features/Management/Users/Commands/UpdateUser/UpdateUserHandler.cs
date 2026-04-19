@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
@@ -10,11 +10,13 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Upd
     {
         private readonly UserManager<AppUser> _userManager;
         private readonly IAuditService _auditService;
+        private readonly ICurrentUserService _currentUserService;
 
-        public UpdateUserHandler(UserManager<AppUser> userManager, IAuditService auditService)
+        public UpdateUserHandler(UserManager<AppUser> userManager, IAuditService auditService, ICurrentUserService currentUserService)
         {
             _userManager = userManager;
             _auditService = auditService;
+            _currentUserService = currentUserService;
         }
 
         public async Task<ServiceResponse<bool>> Handle(UpdateUserCommand request, CancellationToken cancellationToken)
@@ -52,12 +54,12 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Upd
 
             // 4. Audit Log
             await _auditService.LogAsync(
-                request.AdminId ?? "System",
+                _currentUserService.UserId ?? "System",
                 "UpdateUserInfo",
                 "AppUser",
                 user.Id.ToString(),
                 new { UpdatedEmail = user.Email, user.FirstName, user.LastName },
-                request.IpAddress ?? "Unknown"
+                _currentUserService.IpAddress ?? "Unknown"
             );
 
             return new ServiceResponse<bool>(true, "Kullanıcı bilgileri güncellendi.");

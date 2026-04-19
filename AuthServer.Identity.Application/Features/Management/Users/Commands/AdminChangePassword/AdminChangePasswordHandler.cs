@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
@@ -12,12 +12,14 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Adm
         private readonly UserManager<AppUser> _userManager;
         private readonly IApplicationDbContext _context;
         private readonly IAuditService _auditService;
+        private readonly ICurrentUserService _currentUserService;
 
-        public AdminChangePasswordHandler(UserManager<AppUser> userManager, IApplicationDbContext context, IAuditService auditService)
+        public AdminChangePasswordHandler(UserManager<AppUser> userManager, IApplicationDbContext context, IAuditService auditService, ICurrentUserService currentUserService)
         {
             _userManager = userManager;
             _context = context;
             _auditService = auditService;
+            _currentUserService = currentUserService;
         }
 
         public async Task<ServiceResponse<bool>> Handle(AdminChangePasswordCommand request, CancellationToken cancellationToken)
@@ -46,18 +48,18 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Adm
             {
                 t.RevokedDate = DateTime.UtcNow;
                 t.ReasonRevoked = "Password changed by Admin";
-                t.RevokedByIp = request.IpAddress;
+                t.RevokedByIp = _currentUserService.IpAddress;
             }
             await _context.SaveChangesAsync(cancellationToken);
 
             // 3. Audit Log
             await _auditService.LogAsync(
-                request.AdminId ?? "System",
+                _currentUserService.UserId ?? "System",
                 "AdminChangePassword",
                 "AppUser",
                 user.Id.ToString(),
                 new { user.Email, Action = "Force Password Reset" },
-                request.IpAddress ?? "Unknown"
+                _currentUserService.IpAddress ?? "Unknown"
             );
 
             return new ServiceResponse<bool>(true, "Şifre başarıyla değiştirildi ve eski oturumlar kapatıldı.");

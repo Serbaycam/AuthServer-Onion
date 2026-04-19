@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Features.Auth.Commands.RevokeAll;
+using AuthServer.Identity.Application.Features.Auth.Commands.RevokeAll;
 using AuthServer.Identity.Application.Features.Management.Users.Commands.AdminChangePassword;
 using AuthServer.Identity.Application.Features.Management.Users.Commands.AssignRoles;
 using AuthServer.Identity.Application.Features.Management.Users.Commands.CreateUserByAdmin;
@@ -31,9 +31,6 @@ namespace AuthServer.Identity.API.Controllers
         [HttpPost("create-user")]
         public async Task<IActionResult> CreateUser(CreateUserByAdminCommand command)
         {
-            command.AdminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            command.IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
-
             var response = await _mediator.Send(command);
             if (response.Succeeded) return Ok(response);
             return BadRequest(response);
@@ -41,9 +38,6 @@ namespace AuthServer.Identity.API.Controllers
         [HttpPut("update-user")]
         public async Task<IActionResult> UpdateUser(UpdateUserCommand command)
         {
-            command.AdminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            command.IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
-
             var response = await _mediator.Send(command);
             if (response.Succeeded) return Ok(response);
             return BadRequest(response);
@@ -52,9 +46,6 @@ namespace AuthServer.Identity.API.Controllers
         [HttpPost("change-password")]
         public async Task<IActionResult> ChangePassword(AdminChangePasswordCommand command)
         {
-            command.AdminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            command.IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
-
             var response = await _mediator.Send(command);
             if (response.Succeeded) return Ok(response);
             return BadRequest(response);

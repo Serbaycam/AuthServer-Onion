@@ -361,3 +361,4 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+dotnet/runfile-discovery/AuthServer-Onion-d465c52c3f4532ffc80205e86a1959cb161e6cc2766190fe3810858a894074c7/cache.staging.json

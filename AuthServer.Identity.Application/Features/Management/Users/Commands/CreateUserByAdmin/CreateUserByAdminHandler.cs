@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
@@ -10,11 +10,13 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Cre
     {
         private readonly UserManager<AppUser> _userManager;
         private readonly IAuditService _auditService;
+        private readonly ICurrentUserService _currentUserService;
 
-        public CreateUserByAdminHandler(UserManager<AppUser> userManager, IAuditService auditService)
+        public CreateUserByAdminHandler(UserManager<AppUser> userManager, IAuditService auditService, ICurrentUserService currentUserService)
         {
             _userManager = userManager;
             _auditService = auditService;
+            _currentUserService = currentUserService;
         }
 
         public async Task<ServiceResponse<Guid>> Handle(CreateUserByAdminCommand request, CancellationToken cancellationToken)
@@ -54,12 +56,12 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Cre
 
             // 5. Audit Log
             await _auditService.LogAsync(
-                request.AdminId ?? "System",
+                _currentUserService.UserId ?? "System",
                 "CreateUserByAdmin",
                 "AppUser",
                 user.Id.ToString(),
                 new { user.Email, AssignedRoles = request.Roles },
-                request.IpAddress ?? "Unknown"
+                _currentUserService.IpAddress ?? "Unknown"
             );
 
             return new ServiceResponse<Guid>(user.Id, "Kullanıcı başarıyla oluşturuldu.");

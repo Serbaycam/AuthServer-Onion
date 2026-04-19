@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -8,10 +8,12 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Revoke
     public class RevokeTokenCommandHandler : IRequestHandler<RevokeTokenCommand, ServiceResponse<bool>>
     {
         private readonly IApplicationDbContext _context;
+        private readonly ICurrentUserService _currentUserService;
 
-        public RevokeTokenCommandHandler(IApplicationDbContext context)
+        public RevokeTokenCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
         {
             _context = context;
+            _currentUserService = currentUserService;
         }
 
         public async Task<ServiceResponse<bool>> Handle(RevokeTokenCommand request, CancellationToken cancellationToken)
@@ -34,7 +36,7 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Revoke
 
             // Token'ı iptal et (Revoke)
             refreshToken.RevokedDate = DateTime.UtcNow;
-            refreshToken.RevokedByIp = request.IpAddress;
+            refreshToken.RevokedByIp = _currentUserService.IpAddress;
 
             _context.RefreshTokens.Update(refreshToken);
             await _context.SaveChangesAsync(cancellationToken);

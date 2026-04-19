@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Dtos;
+using AuthServer.Identity.Application.Dtos;
 using AuthServer.Identity.Application.Wrappers;
 using MediatR;
 using System.Text.Json.Serialization;
@@ -10,7 +10,5 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Login
     {
         public string Email { get; set; }
         public string Password { get; set; }
-        [JsonIgnore]
-        public string? IpAddress { get; set; }
     }
 }

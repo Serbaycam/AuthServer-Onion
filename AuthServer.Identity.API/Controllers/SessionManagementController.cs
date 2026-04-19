@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Features.Management.Sessions.Commands.KillSession;
+using AuthServer.Identity.Application.Features.Management.Sessions.Commands.KillSession;
 using AuthServer.Identity.Application.Features.Management.Sessions.Queries.GetActiveSessions;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -33,9 +33,6 @@ namespace AuthServer.Identity.API.Controllers
         [HttpPost("kill-session")]
         public async Task<IActionResult> KillSession(KillSessionCommand command)
         {
-            command.AdminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            command.IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
-
             var response = await _mediator.Send(command);
             return Ok(response);
         }

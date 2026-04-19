@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Features.Management.Roles.Commands.CreateRole;
+using AuthServer.Identity.Application.Features.Management.Roles.Commands.CreateRole;
 using AuthServer.Identity.Application.Features.Management.Roles.Commands.DeleteRole;
 using AuthServer.Identity.Application.Features.Management.Roles.Commands.UpdateRole;
 using AuthServer.Identity.Application.Features.Management.Roles.Commands.UpdateRolePermissions;
@@ -71,10 +71,6 @@ namespace AuthServer.Identity.API.Controllers
         [HttpPost("permissions")]
         public async Task<IActionResult> UpdatePermissions(UpdateRolePermissionsCommand command)
         {
-            // Audit Log için Admin ID ve IP'yi ekliyoruz
-            command.AdminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            command.IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
-
             return Ok(await _mediator.Send(command));
         }
         [HttpGet("role-permissions/{id}")]

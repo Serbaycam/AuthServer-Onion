@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Infrastructure.Services;
 using AuthServer.Identity.Infrastructure.Settings;
 using Microsoft.AspNetCore.Authorization;
@@ -18,6 +18,8 @@ namespace AuthServer.Identity.Infrastructure
             services.AddTransient<ITokenService, TokenService>();
             services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
             services.AddSingleton<IAuditService, AuditService>();
+            services.AddHttpContextAccessor();
+            services.AddScoped<ICurrentUserService, CurrentUserService>();
         }
     }
 }

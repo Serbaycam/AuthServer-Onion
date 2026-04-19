@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
@@ -13,12 +13,14 @@ namespace AuthServer.Identity.Application.Features.Management.Roles.Commands.Upd
         private readonly RoleManager<AppRole> _roleManager;
         private readonly IMemoryCache _cache;
         private readonly IAuditService _auditService;
+        private readonly ICurrentUserService _currentUserService;
 
-        public UpdateRolePermissionsHandler(RoleManager<AppRole> roleManager, IMemoryCache cache, IAuditService auditService)
+        public UpdateRolePermissionsHandler(RoleManager<AppRole> roleManager, IMemoryCache cache, IAuditService auditService, ICurrentUserService currentUserService)
         {
             _roleManager = roleManager;
             _cache = cache;
             _auditService = auditService;
+            _currentUserService = currentUserService;
         }
 
         public async Task<ServiceResponse<bool>> Handle(UpdateRolePermissionsCommand request, CancellationToken cancellationToken)
@@ -51,12 +53,12 @@ namespace AuthServer.Identity.Application.Features.Management.Roles.Commands.Upd
                 memoryCache.Compact(1.0); // Tüm memory cache'i temizle (Agresif ama kesin çözüm)
             }
             await _auditService.LogAsync(
-                request.AdminId ?? "System", // request üzerinden alıyoruz
+                _currentUserService.UserId ?? "System", // request üzerinden alıyoruz
                 "UpdateRolePermissions",
                 "AppRole",
                 role.Id.ToString(),
                 new { NewPermissions = request.Permissions },
-                request.IpAddress ?? "127.0.0.1" // request üzerinden alıyoruz
+                _currentUserService.IpAddress ?? "127.0.0.1" // request üzerinden alıyoruz
             );
             return new ServiceResponse<bool>(true, $"{role.Name} rolüne ait yetkiler başarıyla güncellendi.");
         }

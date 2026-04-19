@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -9,11 +9,13 @@ namespace AuthServer.Identity.Application.Features.Management.Sessions.Commands.
     {
         private readonly IApplicationDbContext _context;
         private readonly IAuditService _auditService;
+        private readonly ICurrentUserService _currentUserService;
 
-        public KillSessionHandler(IApplicationDbContext context, IAuditService auditService)
+        public KillSessionHandler(IApplicationDbContext context, IAuditService auditService, ICurrentUserService currentUserService)
         {
             _context = context;
             _auditService = auditService;
+            _currentUserService = currentUserService;
         }
 
         public async Task<ServiceResponse<bool>> Handle(KillSessionCommand request, CancellationToken cancellationToken)
@@ -25,19 +27,19 @@ namespace AuthServer.Identity.Application.Features.Management.Sessions.Commands.
 
             // Token'ı iptal et
             token.RevokedDate = DateTime.UtcNow;
-            token.RevokedByIp = request.IpAddress;
+            token.RevokedByIp = _currentUserService.IpAddress;
             token.ReasonRevoked = "Terminated by Administrator (Kill Session)";
 
             await _context.SaveChangesAsync(cancellationToken);
 
             // Audit Log
             await _auditService.LogAsync(
-                request.AdminId ?? "System",
+                _currentUserService.UserId ?? "System",
                 "KillSession",
                 "RefreshToken",
                 token.Id.ToString(),
                 new { TargetUser = token.User.Email, TokenId = token.Id },
-                request.IpAddress ?? "Unknown"
+                _currentUserService.IpAddress ?? "Unknown"
             );
 
             return new ServiceResponse<bool>(true, "Oturum başarıyla sonlandırıldı.");

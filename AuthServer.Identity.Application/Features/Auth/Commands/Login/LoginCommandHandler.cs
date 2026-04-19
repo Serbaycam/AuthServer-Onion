@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Dtos;
+using AuthServer.Identity.Application.Dtos;
 using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
@@ -13,15 +13,17 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Login
         private readonly SignInManager<AppUser> _signInManager;
         private readonly ITokenService _tokenService;
         private readonly IApplicationDbContext _context;
-        private readonly IAuditService _auditService; // <--- 1. Eklendi
+        private readonly IAuditService _auditService;
+        private readonly ICurrentUserService _currentUserService;
 
-        public LoginCommandHandler(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager, ITokenService tokenService, IApplicationDbContext context, IAuditService auditService)
+        public LoginCommandHandler(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager, ITokenService tokenService, IApplicationDbContext context, IAuditService auditService, ICurrentUserService currentUserService)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _tokenService = tokenService;
             _context = context;
-            _auditService = auditService; // <--- 2. Inject edildi
+            _auditService = auditService;
+            _currentUserService = currentUserService;
         }
 
         public async Task<ServiceResponse<TokenDto>> Handle(LoginCommand request, CancellationToken cancellationToken)
@@ -45,7 +47,7 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Login
             {
                 Token = tokenDto.RefreshToken,
                 Expires = tokenDto.RefreshTokenExpiration,
-                CreatedByIp = request.IpAddress,
+                CreatedByIp = _currentUserService.IpAddress,
                 CreatedDate = DateTime.UtcNow,
                 UserId = user.Id
             };
@@ -61,7 +63,7 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Login
                 "AppUser",                // Etkilenen Tablo
                 user.Id.ToString(),       // Kayıt ID
                 new { Email = user.Email, Roles = roles }, // Detay
-                request.IpAddress ?? "Unknown" // IP Adresi
+                _currentUserService.IpAddress // IP Adresi
             );
             // -----------------------------------------
 

@@ -11,14 +11,14 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("https://*:7023");
-// --- 1. Service Registration (Servis Kayýtlarý) ---
+// --- 1. Service Registration (Servis KayÄ±tlarÄ±) ---
 builder.Services.AddMemoryCache();
-// Kendi katmanlarýmýzý yüklüyoruz
+// Kendi katmanlarÄ±mÄ±zÄ± yÃ¼klÃ¼yoruz
 builder.Services.AddPersistenceServices(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddApplicationServices();
-// JWT Authentication Ayarlarý
-// Bu ayar API'ye gelen "Authorization: Bearer <token>" baþlýðýný okumasýný saðlar.
+// JWT Authentication AyarlarÄ±
+// Bu ayar API'ye gelen "Authorization: Bearer <token>" baÅŸlÄ±ÄŸÄ±nÄ± okumasÄ±nÄ± saÄŸlar.
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -34,7 +34,7 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
-        ClockSkew = TimeSpan.Zero, // Token süresi bittiði an hata versin (Varsayýlan 5 dk tolerans vardýr)
+        ClockSkew = TimeSpan.Zero, // Token sÃ¼resi bittiÄŸi an hata versin (VarsayÄ±lan 5 dk tolerans vardÄ±r)
 
         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
         ValidAudience = builder.Configuration["JwtSettings:Audience"],
@@ -43,7 +43,7 @@ builder.Services.AddAuthentication(options =>
 });
 builder.Services.AddAuthorization(options =>
 {
-    // Permissions sýnýfýndaki stringleri bul
+    // Permissions sÄ±nÄ±fÄ±ndaki stringleri bul
     var permissions = typeof(Permissions).GetNestedTypes()
         .SelectMany(c => c.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy))
         .Select(f => f.GetValue(null).ToString())
@@ -51,40 +51,41 @@ builder.Services.AddAuthorization(options =>
 
     foreach (var permission in permissions)
     {
-        // ARTIK BURASI DEÐÝÞTÝ:
+        // ARTIK BURASI DEÄžÄ°ÅžTÄ°:
         // Eskiden: policy.RequireClaim(...) diyorduk.
-        // Þimdi: policy.AddRequirements(new PermissionRequirement(...)) diyoruz.
-        // Bu sayede bizim yazdýðýmýz Handler devreye girecek.
+        // Åžimdi: policy.AddRequirements(new PermissionRequirement(...)) diyoruz.
+        // Bu sayede bizim yazdÄ±ÄŸÄ±mÄ±z Handler devreye girecek.
         options.AddPolicy(permission, policy =>
             policy.AddRequirements(new PermissionRequirement(permission)));
     }
 });
-// API Controller desteði
+// API Controller desteÄŸi
 builder.Services.AddControllers();
 
-// OpenAPI (Swagger alternatifi yeni .NET özelliði)
+// OpenAPI (Swagger alternatifi yeni .NET Ã¶zelliÄŸi)
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// --- 2. HTTP Request Pipeline (Middleware Sýrasý ÇOK ÖNEMLÝDÝR) ---
+// --- 2. HTTP Request Pipeline (Middleware SÄ±rasÄ± Ã‡OK Ã–NEMLÄ°DÄ°R) ---
 
 if (app.Environment.IsDevelopment())
 {
-    // .NET 9 ile gelen standart OpenAPI sayfasý
+    // .NET 9 ile gelen standart OpenAPI sayfasÄ±
     app.MapOpenApi();
 }
 
+app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseHttpsRedirection();
 
-// !!! KRÝTÝK BÖLÜM !!!
-// Sýralama: Önce kimlik var mý? (AuthN) -> Sonra yetkisi var mý? (AuthZ)
+// !!! KRÄ°TÄ°K BÃ–LÃœM !!!
+// SÄ±ralama: Ã–nce kimlik var mÄ±? (AuthN) -> Sonra yetkisi var mÄ±? (AuthZ)
 app.UseAuthentication();
 app.UseMiddleware<UserStatusMiddleware>();
 app.UseAuthorization();
-// Controller'larý endpoint olarak haritala
+// Controller'larÄ± endpoint olarak haritala
 app.MapControllers();
-// --- SEEDING BAÞLANGICI ---
+// --- SEEDING BAÅžLANGICI ---
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -105,8 +106,8 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         // Loglama yapabilirsin
-        Console.WriteLine("Seeding sýrasýnda hata oluþtu: " + ex.Message);
+        Console.WriteLine("Seeding sÄ±rasÄ±nda hata oluÅŸtu: " + ex.Message);
     }
 }
-// --- SEEDING BÝTÝÞÝ ---
+// --- SEEDING BÄ°TÄ°ÅžÄ° ---
 app.Run();

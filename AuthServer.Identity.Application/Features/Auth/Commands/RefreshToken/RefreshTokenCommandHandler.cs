@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Dtos;
+using AuthServer.Identity.Application.Dtos;
 using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
@@ -13,12 +13,14 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.RefreshToken
         private readonly ITokenService _tokenService;
         private readonly IApplicationDbContext _context;
         private readonly UserManager<AppUser> _userManager;
+        private readonly ICurrentUserService _currentUserService;
 
-        public RefreshTokenCommandHandler(ITokenService tokenService, IApplicationDbContext context, UserManager<AppUser> userManager)
+        public RefreshTokenCommandHandler(ITokenService tokenService, IApplicationDbContext context, UserManager<AppUser> userManager, ICurrentUserService currentUserService)
         {
             _tokenService = tokenService;
             _context = context;
             _userManager = userManager;
+            _currentUserService = currentUserService;
         }
 
         public async Task<ServiceResponse<TokenDto>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
@@ -64,7 +66,7 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.RefreshToken
             // 5. ESKİ TOKEN'I İPTAL ET (ÖNEMLİ!)
             // Artık bu token kullanılamaz, yerine yenisi geçti.
             incomingToken.RevokedDate = DateTime.UtcNow;
-            incomingToken.RevokedByIp = request.IpAddress;
+            incomingToken.RevokedByIp = _currentUserService.IpAddress;
             incomingToken.ReasonRevoked = "Replaced by new token";
             incomingToken.ReplacedByToken = newTokenDto.RefreshToken; // Zinciri kuruyoruz
 
@@ -73,7 +75,7 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.RefreshToken
             {
                 Token = newTokenDto.RefreshToken,
                 Expires = newTokenDto.RefreshTokenExpiration,
-                CreatedByIp = request.IpAddress,
+                CreatedByIp = _currentUserService.IpAddress,
                 CreatedDate = DateTime.UtcNow,
                 UserId = user.Id
             };
