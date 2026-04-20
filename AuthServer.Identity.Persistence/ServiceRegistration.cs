@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Domain.Entities;
 using AuthServer.Identity.Persistence.Context;
 using Microsoft.AspNetCore.Identity;
@@ -14,7 +14,7 @@ namespace AuthServer.Identity.Persistence
         {
             // DbContext'i SQL Server'a bağlıyoruz
             services.AddDbContext<AppDbContext>(options =>
-                options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+                options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
 
             // --- EKLENECEK SATIR ---
             // Biri IApplicationDbContext isterse, ona yukarıda oluşturduğun AppDbContext'i ver.
