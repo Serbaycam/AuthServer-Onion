@@ -18,7 +18,7 @@ Content-Type: application/json
 
 # Login isteðinden dönen "accessToken" deðerini buraya yapýþtýrýn.
 # Diðer tüm istekler bu deðiþkeni kullanacak.
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwNDQ4NGNmYi1kYzAyLTQ2N2YtYzc5Ni0wOGRlNmEyZmU1MjciLCJlbWFpbCI6InN1cGVyYWRtaW5AQXV0aFNlcnZlci5sb2NhbCIsImp0aSI6IjZlN2NlNTFiLWE4NDEtNDJkYi04MzM4LTYwMDZiOWM4YWUwMCIsImZ1bGxOYW1lIjoiYWRtaW4gc3VwZXIiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOlsiU3VwZXJBZG1pbiIsIkxhYk1hbmFnZXIiXSwiZXhwIjoxNzcwOTA0NDU4LCJpc3MiOiJBdXRoU2VydmVyIiwiYXVkIjoiQXV0aFNlcnZlci5DbGllbnRzIn0.AISIMJMIxvNt38Eph3bR8oNyU5qYEA92NgDZRKmCIX4
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxNGM5MzQ3YS1iOTM1LTQ5YjctOGMzYS0wOGRlOWVhMmQ0MTYiLCJlbWFpbCI6InN1cGVyYWRtaW5AQXV0aFNlcnZlci5sb2NhbCIsImp0aSI6IjQ2NmU2NDRkLTc3YWItNDZlZC04OTE2LTAzYzkwZGUzYzUyOSIsImZ1bGxOYW1lIjoiYWRtaW4gc3VwZXIiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOiJTdXBlckFkbWluIiwiZXhwIjoxNzc2NjY2MDM1LCJpc3MiOiJBdXRoU2VydmVyIiwiYXVkIjoiQXV0aFNlcnZlci5DbGllbnRzIn0.7FBrlIn-xZ6a05Ejjq1xtYNMb96q8jxXXRIR-aTgI4U
 
 ### 
 
@@ -44,7 +44,7 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "userId": "d22faff4-b313-4b8c-6966-08de6a3c29ee",
+  "userId": "487ec7e6-5100-4418-8c3b-08de9ea2d416",
   "newPassword": "ResetPa$$123"
 }
 ###
@@ -55,7 +55,7 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "userId": "d22faff4-b313-4b8c-6966-08de6a3c29ee",
+  "userId": "487ec7e6-5100-4418-8c3b-08de9ea2d416",
   "firstName": "Mehmet",
   "lastName": "Demir",
   "email": "mehmet.yeni@lab.local"
