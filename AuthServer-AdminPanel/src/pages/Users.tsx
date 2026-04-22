@@ -140,11 +140,11 @@ export default function Users() {
 
       {showAddUser && (
         <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
-          <div><small>First Name</small><br /><input className="input-field" value={newUser.firstName} onChange={e => setNewUser({...newUser, firstName: e.target.value})} /></div>
-          <div><small>Last Name</small><br /><input className="input-field" value={newUser.lastName} onChange={e => setNewUser({...newUser, lastName: e.target.value})} /></div>
-          <div><small>Email</small><br /><input className="input-field" type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} /></div>
-          <div><small>Password</small><br /><input className="input-field" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} /></div>
-          <div><small>Roles (comma list)</small><br /><input className="input-field" value={newUser.roles} onChange={e => setNewUser({...newUser, roles: e.target.value})} /></div>
+          <div><small>First Name</small><br /><input className="form-control" value={newUser.firstName} onChange={e => setNewUser({...newUser, firstName: e.target.value})} /></div>
+          <div><small>Last Name</small><br /><input className="form-control" value={newUser.lastName} onChange={e => setNewUser({...newUser, lastName: e.target.value})} /></div>
+          <div><small>Email</small><br /><input className="form-control" type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} /></div>
+          <div><small>Password</small><br /><input className="form-control" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} /></div>
+          <div><small>Roles (comma list)</small><br /><input className="form-control" value={newUser.roles} onChange={e => setNewUser({...newUser, roles: e.target.value})} /></div>
           <button className="btn btn-primary" onClick={createUser} style={{ height: '42px' }}>Save User</button>
         </div>
       )}

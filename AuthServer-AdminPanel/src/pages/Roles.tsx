@@ -125,7 +125,7 @@ export default function Roles() {
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
             <input 
               type="text" 
-              className="input-field" 
+              className="form-control" 
               placeholder="New role name..." 
               value={newRoleName}
               onChange={e => setNewRoleName(e.target.value)}

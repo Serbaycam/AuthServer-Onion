@@ -7,7 +7,7 @@ interface DashboardStats {
   totalUsers: number;
   activeUsers: number;
   totalRoles: number;
-  activeSessions: number;
+  totalActiveSessions: number;
 }
 
 export default function Dashboard() {
@@ -81,7 +81,7 @@ export default function Dashboard() {
           </div>
           <div className="stat-content">
             <h3>Active Sessions</h3>
-            <p className="stat-value">{stats?.activeSessions || 0}</p>
+            <p className="stat-value">{stats?.totalActiveSessions || 0}</p>
           </div>
         </div>
       </div>
