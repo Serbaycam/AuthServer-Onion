@@ -144,7 +144,19 @@ dotnet ef database update \
 
 ## Çalıştırma
 
-### Docker ile Çalıştırma
+### Admin Panelini Çalıştırma (Web Control Panel)
+Yönetim paneli React ile yazılmıştır ve API ile tamamen entegredir.
+```bash
+# Klasöre gidin
+cd AuthServer-AdminPanel
+
+# Docker ile İmajını oluşturun ve ayağa kaldırın
+docker build -t authadmin-panel .
+docker run -d --name authadmin-panel -p 3000:80 authadmin-panel
+```
+Panele **http://localhost:3000** üzerinden `superadmin@AuthServer.local` ve şifrenizle erişebilirsiniz!
+
+### Docker ile Çalıştırma (API)
 Uygulama tamamen Dockerize edilmiştir. Projenin ana klasöründe imaj oluşturup kolayca çalıştırabilirsiniz:
 ```bash
 docker build -t authserver-api .
