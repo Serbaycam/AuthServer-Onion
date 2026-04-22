@@ -15,6 +15,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 // --- 1. Service Registration (Servis Kayıtları) ---
 builder.Services.AddMemoryCache();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAdminPanel",
+        policy => policy.WithOrigins("http://localhost:3000")
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials());
+});
 // Kendi katmanlarımızı yüklüyoruz
 builder.Services.AddPersistenceServices(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
@@ -82,6 +90,7 @@ app.UseHttpsRedirection();
 
 // !!! KRİTİK BÖLÜM !!!
 // Sıralama: Önce kimlik var mı? (AuthN) -> Sonra yetkisi var mı? (AuthZ)
+app.UseCors("AllowAdminPanel");
 app.UseAuthentication();
 app.UseMiddleware<UserStatusMiddleware>();
 app.UseAuthorization();
