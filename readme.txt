@@ -8,7 +8,7 @@ Docker Usage:
 
 1. To run the API Server:
 docker build -t authserver-api .
-docker run -d --name authserver-api -p 8080:8080 authserver-api
+docker run -d --name authserver-api --network my-postgres-env_default -p 8080:8080 authserver-api
 
 2. To run the new Frontend Admin Panel (Web Application):
 cd AuthServer-AdminPanel
@@ -26,7 +26,7 @@ Docker Kullanim:
 
 1. API Sunucusunu Calistirmak İcin:
 docker build -t authserver-api .
-docker run -d --name authserver-api -p 8080:8080 authserver-api
+docker run -d --name authserver-api --network my-postgres-env_default -p 8080:8080 authserver-api
 
 2. Yeni Yonetim Panelini (Frontend) Calistirmak İcin:
 cd AuthServer-AdminPanel
