@@ -1,5 +1,5 @@
 ================================================================================
-DATABASE UPDATE INSTRUCTIONS / VERÝTABANI GÜNCELLEME TALÝMATLARI
+DATABASE UPDATE INSTRUCTIONS / VERITABANI GUNCELLEME TALIMATLARI
 ================================================================================
 
 [EN] ENGLISH INSTRUCTIONS
@@ -13,25 +13,29 @@ To apply the latest Entity Framework migrations and update the databases, follow
 # For Identity API (Users, Roles, Permissions):
 dotnet ef database update --project AuthServer.Identity.API
 
+NOTE FOR DOCKER USERS: 
+If you are running the application via Docker, you DO NOT need to run these commands! The database migration is automatically applied on container startup via Program.cs.
 
 --------------------------------------------------------------------------------
 
-[TR] TÜRKÇE TALÝMATLAR
+[TR] TURKCE TALIMATLAR
 --------------------------------------------------------------------------------
-En son Entity Framework migrasyonlarýný uygulamak ve veritabanlarýný güncellemek için þu adýmlarý izleyin:
+En son Entity Framework migrasyonlarini uygulamak ve veritabanlarini guncellemek icin su adimlari izleyin:
 
-1. Terminalinizi veya komut satýrýnýzý açýn.
-2. Solution dosyasýnýn ('AuthServer.sln') bulunduðu ana dizine gidin.
-3. Her bir mikroservisin veritabanýný güncellemek için aþaðýdaki komutlarý çalýþtýrýn:
+1. Terminalinizi veya komut satirinizi acin.
+2. Solution dosyasinin ('AuthServer.sln') bulundugu ana dizine gidin.
+3. Her bir mikroservisin veritabanini guncellemek icin asagidaki komutlari calistirin:
 
-# Identity API için (Kullanýcýlar, Roller, Yetkiler):
+# Identity API icin (Kullanicilar, Roller, Yetkiler):
 dotnet ef database update --project AuthServer.Identity.API
 
+DOCKER KULLANICILARI ICIN NOT:
+Eger uygulamayi Docker uzerinden calistiriyorsaniz, bu komutlari calistirmaniza GEREK YOKTUR! Veritabani guncellemesi (migration) konteyner ayaga kalkarken Program.cs uzerinden otomatik olarak yapilmaktadir.
 
 ================================================================================
 NOTE / NOT:
 If you receive a "command not found" error, ensure that the EF Core tool is installed:
-"Komut bulunamadý" hatasý alýrsanýz, EF Core aracýnýn yüklü olduðundan emin olun:
+"Komut bulunamadi" hatasi alirsaniz, EF Core aracinin yuklu oldugundan emin olun:
 
 dotnet tool install --global dotnet-ef
 ================================================================================

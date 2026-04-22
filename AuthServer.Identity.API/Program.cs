@@ -9,8 +9,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
+using AuthServer.Identity.Persistence.Context;
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("https://*:7023");
+
 // --- 1. Service Registration (Servis Kayıtları) ---
 builder.Services.AddMemoryCache();
 // Kendi katmanlarımızı yüklüyoruz
@@ -93,6 +95,11 @@ using (var scope = app.Services.CreateScope())
     {
         var userManager = services.GetRequiredService<UserManager<AppUser>>();
         var roleManager = services.GetRequiredService<RoleManager<AppRole>>();
+        var dbContext = services.GetRequiredService<AppDbContext>();
+
+        // Otomatik veritabanı göçü (migration) işlemi
+        // (docker container ilk ayağa kalkarken Update-Database işlemini kendisi yapar)
+        await dbContext.Database.MigrateAsync();
 
         // Rolleri Ekle
         await ContextSeed.SeedRolesAsync(userManager, roleManager);

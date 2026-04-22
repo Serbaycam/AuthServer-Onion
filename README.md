@@ -144,7 +144,15 @@ dotnet ef database update \
 
 ## Çalıştırma
 
-### Auth API
+### Docker ile Çalıştırma
+Uygulama tamamen Dockerize edilmiştir. Projenin ana klasöründe imaj oluşturup kolayca çalıştırabilirsiniz:
+```bash
+docker build -t authserver-api .
+docker run -d --name authserver-api -p 8080:8080 authserver-api
+```
+*(Not: Veritabanı olarak mevcut bir Docker PostgreSQL ağınız varsa `--network` parametresini ekleyebilirsiniz. Ayrıca Docker ile kalktığında veritabanı migration işlemleri (Update-Database) kendi kendine arka planda aniden tamamlanır!)*
+
+### Lokal Ortam (Auth API)
 ```bash
 dotnet run --project AuthServer.Identity.API
 ```
