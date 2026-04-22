@@ -4,6 +4,8 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
+import Roles from './pages/Roles';
+import Sessions from './pages/Sessions';
 
 function App() {
   return (
@@ -17,12 +19,8 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/users" element={<Users />} />
             
-            <Route path="/roles" element={<div className="glass-panel" style={{padding: '2rem'}}>
-                <h1>Roles & Permissions</h1><p>Module coming soon...</p>
-            </div>} />
-            <Route path="/sessions" element={<div className="glass-panel" style={{padding: '2rem'}}>
-                <h1>Active Sessions</h1><p>Module coming soon...</p>
-            </div>} />
+            <Route path="/roles" element={<Roles />} />
+            <Route path="/sessions" element={<Sessions />} />
           </Route>
         </Routes>
       </AuthProvider>
