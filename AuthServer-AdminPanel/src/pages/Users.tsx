@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserPlus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
+import { UserPlus, ToggleLeft, ToggleRight, Trash2, Key, Shield } from 'lucide-react';
 import { fetchWithAuth } from '../api';
 
 interface User {
@@ -14,6 +14,10 @@ interface User {
 export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Modal states
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newUser, setNewUser] = useState({ firstName: '', lastName: '', email: '', password: '', roles: '' });
 
   const loadUsers = async () => {
     try {
@@ -39,6 +43,7 @@ export default function Users() {
     try {
       const res = await fetchWithAuth('/UserManagement/update-status', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, isActive: !currentStatus })
       });
       if (res.ok) {
@@ -47,6 +52,76 @@ export default function Users() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const createUser = async () => {
+    if (!newUser.email || !newUser.password) return;
+    try {
+      const payload = {
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        email: newUser.email,
+        password: newUser.password,
+        roles: newUser.roles.split(',').map(r => r.trim()).filter(r => r)
+      };
+      const res = await fetchWithAuth('/UserManagement/user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        setShowAddUser(false);
+        setNewUser({ firstName: '', lastName: '', email: '', password: '', roles: '' });
+        loadUsers();
+      } else {
+        alert("Failed to create user.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const changePassword = async (userId: string) => {
+    const newPassword = window.prompt("Enter new password for this user:");
+    if (!newPassword) return;
+    try {
+      const res = await fetchWithAuth('/UserManagement/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, newPassword })
+      });
+      if (res.ok) {
+        alert("Password changed successfully!");
+      } else {
+        alert("Error changing password.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const manageRoles = async (userId: string, currentRoles: string[]) => {
+    const rolesStr = window.prompt("Enter roles separated by comma (e.g. Admin, Basic):", currentRoles.join(', '));
+    if (rolesStr === null) return;
+    try {
+      const rolesArray = rolesStr.split(',').map(r => r.trim()).filter(r => r);
+      const res = await fetchWithAuth('/UserManagement/assign-roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, roles: rolesArray })
+      });
+      if (res.ok) {
+        loadUsers();
+      } else {
+        alert("Failed to assign roles");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const forceDisconnect = async () => {
+    alert("Use the Active Sessions page to disconnect a specific session or use /UserManagement/revoke-all in API.");
   };
 
   if (loading) return <div className="loading-state">Loading users...</div>;
@@ -58,10 +133,21 @@ export default function Users() {
           <h1>User Management</h1>
           <p>Manage application users and their access</p>
         </div>
-        <button className="btn btn-primary">
+        <button className="btn btn-primary" onClick={() => setShowAddUser(!showAddUser)}>
           <UserPlus size={18} /> Add User
         </button>
       </div>
+
+      {showAddUser && (
+        <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
+          <div><small>First Name</small><br /><input className="input-field" value={newUser.firstName} onChange={e => setNewUser({...newUser, firstName: e.target.value})} /></div>
+          <div><small>Last Name</small><br /><input className="input-field" value={newUser.lastName} onChange={e => setNewUser({...newUser, lastName: e.target.value})} /></div>
+          <div><small>Email</small><br /><input className="input-field" type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} /></div>
+          <div><small>Password</small><br /><input className="input-field" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} /></div>
+          <div><small>Roles (comma list)</small><br /><input className="input-field" value={newUser.roles} onChange={e => setNewUser({...newUser, roles: e.target.value})} /></div>
+          <button className="btn btn-primary" onClick={createUser} style={{ height: '42px' }}>Save User</button>
+        </div>
+      )}
 
       <div className="table-container glass-panel">
         <table>
@@ -93,15 +179,16 @@ export default function Users() {
                 </td>
                 <td>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button 
-                      onClick={() => toggleStatus(user.id, user.isActive)}
-                      className="btn btn-outline"
-                      style={{ padding: '0.4rem', borderRadius: '4px' }}
-                      title={user.isActive ? "Deactivate User" : "Activate User"}
-                    >
+                    <button onClick={() => toggleStatus(user.id, user.isActive)} className="btn btn-outline" style={{ padding: '0.4rem' }} title="Toggle Active Status">
                       {user.isActive ? <ToggleRight size={18} color="var(--success)" /> : <ToggleLeft size={18} color="var(--danger)" />}
                     </button>
-                    <button className="btn btn-danger" style={{ padding: '0.4rem', borderRadius: '4px' }} title="Force Logout">
+                    <button onClick={() => changePassword(user.id)} className="btn btn-outline" style={{ padding: '0.4rem' }} title="Change Password">
+                      <Key size={18} color="#3b82f6" />
+                    </button>
+                    <button onClick={() => manageRoles(user.id, user.roles)} className="btn btn-outline" style={{ padding: '0.4rem' }} title="Manage Roles">
+                      <Shield size={18} color="#8b5cf6" />
+                    </button>
+                    <button onClick={forceDisconnect} className="btn btn-danger" style={{ padding: '0.4rem' }} title="Force Logout">
                       <Trash2 size={18} />
                     </button>
                   </div>

@@ -13,29 +13,31 @@ export default function Roles() {
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [rolePermissions, setRolePermissions] = useState<string[]>([]);
   
+  const [newRoleName, setNewRoleName] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [rolesRes, permsRes] = await Promise.all([
-          fetchWithAuth('/RoleManagement/roles'),
-          fetchWithAuth('/RoleManagement/permissions')
-        ]);
-        
-        if (rolesRes.ok && permsRes.ok) {
-          const rolesData = await rolesRes.json();
-          const permsData = await permsRes.json();
-          setRoles(rolesData.data || []);
-          setAllPermissions(permsData.data || []);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+  const fetchRolesAndPerms = async () => {
+    try {
+      const [rolesRes, permsRes] = await Promise.all([
+        fetchWithAuth('/RoleManagement/roles'),
+        fetchWithAuth('/RoleManagement/permissions')
+      ]);
+      
+      if (rolesRes.ok && permsRes.ok) {
+        const rolesData = await rolesRes.json();
+        const permsData = await permsRes.json();
+        setRoles(rolesData.data || []);
+        setAllPermissions(permsData.data || []);
       }
-    };
-    fetchData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRolesAndPerms();
   }, []);
 
   const loadRolePermissions = async (roleId: string) => {
@@ -44,7 +46,9 @@ export default function Roles() {
       const res = await fetchWithAuth(`/RoleManagement/role-permissions/${roleId}`);
       if (res.ok) {
         const data = await res.json();
-        setRolePermissions(data.data || []);
+        // The API returns [{ permissionName: "Permissions.Users.View" }], map to string array:
+        const dtoList = data.data || [];
+        setRolePermissions(dtoList.map((p: any) => p.permissionName));
       }
     } catch (err) {
       console.error(err);
@@ -74,6 +78,36 @@ export default function Roles() {
     }
   };
 
+  const createRole = async () => {
+    if (!newRoleName.trim()) return;
+    try {
+      const res = await fetchWithAuth('/RoleManagement/role', {
+        method: 'POST',
+        body: JSON.stringify({ roleName: newRoleName })
+      });
+      if (res.ok) {
+        setNewRoleName('');
+        fetchRolesAndPerms();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const deleteRole = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!window.confirm("Are you sure you want to delete this role?")) return;
+    try {
+      const res = await fetchWithAuth(`/RoleManagement/role/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (selectedRole === id) setSelectedRole(null);
+        fetchRolesAndPerms();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   if (loading) return <div className="loading-state">Loading roles...</div>;
 
   return (
@@ -88,16 +122,34 @@ export default function Roles() {
           <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <ShieldAlert size={20} /> Roles
           </h3>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+            <input 
+              type="text" 
+              className="input-field" 
+              placeholder="New role name..." 
+              value={newRoleName}
+              onChange={e => setNewRoleName(e.target.value)}
+              style={{ padding: '0.5rem', flex: 1 }}
+            />
+            <button className="btn btn-primary" onClick={createRole} style={{ padding: '0.5rem 1rem' }}>Add</button>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {roles.map(role => (
-              <button 
+              <div
                 key={role.id}
                 onClick={() => loadRolePermissions(role.id)}
                 className={`btn btn-outline ${selectedRole === role.id ? 'btn-primary' : ''}`}
-                style={{ justifyContent: 'flex-start' }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
               >
-                {role.name}
-              </button>
+                <span>{role.name}</span>
+                <button 
+                  onClick={(e) => deleteRole(e, role.id)}
+                  style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
+                  title="Delete Role"
+                >
+                  ✕
+                </button>
+              </div>
             ))}
           </div>
         </div>
