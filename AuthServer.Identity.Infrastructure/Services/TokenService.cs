@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Dtos;
+using AuthServer.Identity.Application.Dtos;
 using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Domain.Entities;
 using AuthServer.Identity.Infrastructure.Settings;
@@ -42,7 +42,8 @@ namespace AuthServer.Identity.Infrastructure.Services
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             // 3. Süreyi Belirle
-            var expiration = DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes);
+            var accessMins = _jwtSettings.AccessTokenExpirationMinutes > 0 ? _jwtSettings.AccessTokenExpirationMinutes : 15;
+            var expiration = DateTime.UtcNow.AddMinutes(accessMins);
 
             // 4. Token'ı Oluştur
             var token = new JwtSecurityToken(
@@ -61,7 +62,7 @@ namespace AuthServer.Identity.Infrastructure.Services
                 AccessToken = new JwtSecurityTokenHandler().WriteToken(token),
                 AccessTokenExpiration = expiration,
                 RefreshToken = refreshToken,
-                RefreshTokenExpiration = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpirationDays)
+                RefreshTokenExpiration = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpirationDays > 0 ? _jwtSettings.RefreshTokenExpirationDays : 7)
             });
         }
 

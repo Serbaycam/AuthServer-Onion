@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Dtos;
+using AuthServer.Identity.Application.Dtos;
 using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
@@ -12,11 +12,13 @@ namespace AuthServer.Identity.Application.Features.Management.Dashboard.Queries
     public class GetDashboardStatsHandler : IRequestHandler<GetDashboardStatsQuery, ServiceResponse<DashboardStatsDto>>
     {
         private readonly UserManager<AppUser> _userManager;
+        private readonly RoleManager<AppRole> _roleManager;
         private readonly IApplicationDbContext _context;
 
-        public GetDashboardStatsHandler(UserManager<AppUser> userManager, IApplicationDbContext context)
+        public GetDashboardStatsHandler(UserManager<AppUser> userManager, RoleManager<AppRole> roleManager, IApplicationDbContext context)
         {
             _userManager = userManager;
+            _roleManager = roleManager;
             _context = context;
         }
 
@@ -58,11 +60,14 @@ namespace AuthServer.Identity.Application.Features.Management.Dashboard.Queries
                 UserEmail = userEmails.ContainsKey(x.UserId) ? userEmails[x.UserId] : x.UserId
             }).ToList();
 
+            var totalRoles = await _roleManager.Roles.CountAsync(cancellationToken);
+
             var stats = new DashboardStatsDto
             {
                 TotalUsers = totalUsers,
                 ActiveUsers = activeUsers,
                 PassiveUsers = totalUsers - activeUsers,
+                TotalRoles = totalRoles,
                 TotalActiveSessions = activeSessions,
                 LatestActivities = logDtos
             };
