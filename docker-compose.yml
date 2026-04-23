@@ -1,0 +1,71 @@
+services:
+  postgres_db:
+    image: postgres:16
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: AuthServerIdentityDb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - auth_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d AuthServerIdentityDb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  authserver-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: authserver-api
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    networks:
+      - auth_network
+    restart: unless-stopped
+
+  authadmin-panel:
+    build:
+      context: ./AuthServer-AdminPanel
+      dockerfile: Dockerfile
+    container_name: authadmin-panel
+    ports:
+      - "3000:80"
+    depends_on:
+      - authserver-api
+    networks:
+      - auth_network
+    restart: unless-stopped
+
+  pgadmin_panel:
+    image: dpage/pgadmin4
+    container_name: pgadmin_panel
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    networks:
+      - auth_network
+
+volumes:
+  postgres_data:
+    name: my-postgres-env_pgdata
+    external: true
+
+networks:
+  auth_network:
+    driver: bridge
