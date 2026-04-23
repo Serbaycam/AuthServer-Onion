@@ -22,7 +22,7 @@ services:
   authserver-api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: AuthServer.Identity.API/Dockerfile
     container_name: authserver-api
     ports:
       - "8080:8080"
