@@ -64,7 +64,6 @@ services:
 volumes:
   postgres_data:
     name: my-postgres-env_pgdata
-    external: true
 
 networks:
   auth_network:
