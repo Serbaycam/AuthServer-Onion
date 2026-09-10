@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Dtos;
+using AuthServer.Identity.Application.Dtos;
 using AuthServer.Identity.Application.Wrappers;
 using MediatR;
 
@@ -6,6 +6,6 @@ namespace AuthServer.Identity.Application.Features.Management.Sessions.Queries.G
 {
     public class GetActiveSessionsQuery : IRequest<ServiceResponse<List<ActiveSessionDto>>>
     {
-        public string? CurrentToken { get; set; }
+        public Guid? CurrentSessionId { get; set; }
     }
 }

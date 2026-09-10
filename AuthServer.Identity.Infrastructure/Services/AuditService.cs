@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Domain.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
@@ -7,18 +7,17 @@ namespace AuthServer.Identity.Infrastructure.Services
 {
     public class AuditService : IAuditService
     {
-        private readonly IServiceScopeFactory _scopeFactory;
+        private readonly IApplicationDbContext _context;
 
-        public AuditService(IServiceScopeFactory scopeFactory)
+        public AuditService(IApplicationDbContext context)
         {
-            _scopeFactory = scopeFactory;
+            _context = context;
         }
 
         public async Task LogAsync(string userId, string action, string entityName, string entityId, object details, string ipAddress)
         {
             // Manuel Scope oluşturarak Scoped servislere (DbContext) erişiyoruz
-            using var scope = _scopeFactory.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
+            var context = _context;
 
             var log = new AuditLog
             {

@@ -36,7 +36,12 @@ export default function Users() {
   };
 
   useEffect(() => {
-    loadUsers();
+    const controller = new AbortController();
+    void fetchWithAuth('/UserManagement/all-users', { signal: controller.signal })
+      .then(res => res.json()).then(data => { if (!controller.signal.aborted && data.succeeded) setUsers(data.data); })
+      .catch(error => { if (!controller.signal.aborted) console.error(error); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, []);
 
   const toggleStatus = async (userId: string, currentStatus: boolean) => {
@@ -64,7 +69,7 @@ export default function Users() {
         password: newUser.password,
         roles: newUser.roles.split(',').map(r => r.trim()).filter(r => r)
       };
-      const res = await fetchWithAuth('/UserManagement/user', {
+      const res = await fetchWithAuth('/UserManagement/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -120,8 +125,15 @@ export default function Users() {
     }
   };
 
-  const forceDisconnect = async () => {
-    alert("Use the Active Sessions page to disconnect a specific session or use /UserManagement/revoke-all in API.");
+  const forceDisconnect = async (userId: string) => {
+    if (!window.confirm('Terminate all sessions for this user?')) return;
+    try {
+      const response = await fetchWithAuth('/UserManagement/revoke-all', {
+        method: 'POST', body: JSON.stringify({ userId })
+      });
+      const result = await response.json();
+      alert(result.message || (response.ok ? 'Sessions terminated.' : 'Unable to terminate sessions.'));
+    } catch { alert('Unable to connect to the server.'); }
   };
 
   if (loading) return <div className="loading-state">Loading users...</div>;
@@ -188,7 +200,7 @@ export default function Users() {
                     <button onClick={() => manageRoles(user.id, user.roles)} className="btn btn-outline" style={{ padding: '0.4rem' }} title="Manage Roles">
                       <Shield size={18} color="#8b5cf6" />
                     </button>
-                    <button onClick={forceDisconnect} className="btn btn-danger" style={{ padding: '0.4rem' }} title="Force Logout">
+                    <button onClick={() => forceDisconnect(user.id)} className="btn btn-danger" style={{ padding: '0.4rem' }} title="Force Logout">
                       <Trash2 size={18} />
                     </button>
                   </div>

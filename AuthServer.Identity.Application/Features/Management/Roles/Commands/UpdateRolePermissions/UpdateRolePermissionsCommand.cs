@@ -6,6 +6,8 @@ namespace AuthServer.Identity.Application.Features.Management.Roles.Commands.Upd
 {
     public class UpdateRolePermissionsCommand : IRequest<ServiceResponse<bool>>
     {
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.StringLength(256)]
         public string RoleId { get; set; }
         public List<string> Permissions { get; set; } // Örn: ["Permissions.Laboratories.View", "Permissions.Laboratories.Create"]
     }

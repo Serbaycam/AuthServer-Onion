@@ -1,46 +1,26 @@
 using AuthServer.Identity.Application.Wrappers;
-using System.Net;
-using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 
-namespace AuthServer.Identity.API.Middlewares
+namespace AuthServer.Identity.API.Middlewares;
+
+public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExceptionMiddleware> logger)
 {
-    public class GlobalExceptionMiddleware
+    public async Task InvokeAsync(HttpContext context)
     {
-        private readonly RequestDelegate _next;
-        private readonly ILogger<GlobalExceptionMiddleware> _logger;
-
-        public GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExceptionMiddleware> logger)
+        try { await next(context); }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
+        catch (Exception exception)
         {
-            _next = next;
-            _logger = logger;
-        }
-
-        public async Task InvokeAsync(HttpContext httpContext)
-        {
-            try
-            {
-                await _next(httpContext);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Bir hata oluştu: {Message}", ex.Message);
-                await HandleExceptionAsync(httpContext, ex);
-            }
-        }
-
-        private async Task HandleExceptionAsync(HttpContext context, Exception exception)
-        {
-            context.Response.ContentType = "application/json";
-            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-
-            var response = new ServiceResponse<string>(exception.Message)
-            {
-                Succeeded = false,
-                Errors = new List<string> { exception.Message }
-            };
-
-            var jsonResponse = JsonSerializer.Serialize(response);
-            await context.Response.WriteAsync(jsonResponse);
+            logger.LogError(exception, "Request failed. TraceId: {TraceId}", context.TraceIdentifier);
+            if (context.Response.HasStarted) throw;
+            context.Response.Clear();
+            context.Response.StatusCode = exception is DbUpdateConcurrencyException ||
+                exception is Npgsql.PostgresException { SqlState: "40001" or "40P01" } ||
+                exception.InnerException is Npgsql.PostgresException { SqlState: "40001" or "40P01" } ? 409 : 500;
+            await context.Response.WriteAsJsonAsync(new ServiceResponse<string>(
+                context.Response.StatusCode == 409
+                    ? "Kayıt başka bir işlem tarafından değiştirildi. Tekrar deneyin."
+                    : $"İşlem tamamlanamadı. Referans: {context.TraceIdentifier}"));
         }
     }
 }

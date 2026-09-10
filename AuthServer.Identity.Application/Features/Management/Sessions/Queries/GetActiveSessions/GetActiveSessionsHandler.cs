@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Dtos;
+using AuthServer.Identity.Application.Dtos;
 using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using MediatR;
@@ -29,7 +29,7 @@ namespace AuthServer.Identity.Application.Features.Management.Sessions.Queries.G
                     IpAddress = x.CreatedByIp,
                     CreatedDate = x.CreatedDate,
                     ExpirationDate = x.Expires,
-                    IsCurrentSession = x.Token == request.CurrentToken
+                    IsCurrentSession = x.Id == request.CurrentSessionId
                 })
                 .ToListAsync(cancellationToken);
 

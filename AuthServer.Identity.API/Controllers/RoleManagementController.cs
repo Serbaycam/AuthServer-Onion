@@ -29,28 +29,32 @@ namespace AuthServer.Identity.API.Controllers
         [HttpGet("roles")]
         public async Task<IActionResult> GetRoles()
         {
-            return Ok(await _mediator.Send(new GetRolesQuery()));
+            var response = await _mediator.Send(new GetRolesQuery(), HttpContext.RequestAborted);
+            return response.Succeeded ? Ok(response) : BadRequest(response);
         }
 
         // 2. Yeni Rol Oluştur
         [HttpPost("role")]
         public async Task<IActionResult> CreateRole(CreateRoleCommand command)
         {
-            return Ok(await _mediator.Send(command));
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
+            return response.Succeeded ? Ok(response) : BadRequest(response);
         }
 
         // 3. Rol İsmini Güncelle
         [HttpPut("role")]
         public async Task<IActionResult> UpdateRole(UpdateRoleCommand command)
         {
-            return Ok(await _mediator.Send(command));
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
+            return response.Succeeded ? Ok(response) : BadRequest(response);
         }
 
         // 4. Rol Sil
         [HttpDelete("role/{id}")]
         public async Task<IActionResult> DeleteRole(string id)
         {
-            return Ok(await _mediator.Send(new DeleteRoleCommand { RoleId = id }));
+            var response = await _mediator.Send(new DeleteRoleCommand { RoleId = id }, HttpContext.RequestAborted);
+            return response.Succeeded ? Ok(response) : BadRequest(response);
         }
 
         // 5. Sistemdeki Tüm Yetkileri (Static Permissions) Listele
@@ -71,12 +75,14 @@ namespace AuthServer.Identity.API.Controllers
         [HttpPost("permissions")]
         public async Task<IActionResult> UpdatePermissions(UpdateRolePermissionsCommand command)
         {
-            return Ok(await _mediator.Send(command));
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
+            return response.Succeeded ? Ok(response) : BadRequest(response);
         }
         [HttpGet("role-permissions/{id}")]
         public async Task<IActionResult> GetRolePermissions(string id)
         {
-            return Ok(await _mediator.Send(new GetRolePermissionsQuery { RoleId = id }));
+            var response = await _mediator.Send(new GetRolePermissionsQuery { RoleId = id }, HttpContext.RequestAborted);
+            return response.Succeeded ? Ok(response) : BadRequest(response);
         }
     }
 }

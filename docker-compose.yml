@@ -1,17 +1,12 @@
 services:
   postgres_db:
     image: postgres:16
-    container_name: postgres_db
     environment:
       POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       POSTGRES_DB: AuthServerIdentityDb
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - auth_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U myuser -d AuthServerIdentityDb"]
@@ -23,48 +18,28 @@ services:
     build:
       context: .
       dockerfile: AuthServer.Identity.API/Dockerfile
-    container_name: authserver-api
-    ports:
-      - "8080:8080"
+    environment:
+      ASPNETCORE_HTTP_PORTS: 8080
+      ConnectionStrings__DefaultConnection: "Host=postgres_db;Database=AuthServerIdentityDb;Username=myuser;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}"
+      JwtSettings__Secret: ${JWT_SECRET:?Set JWT_SECRET}
+      Database__Initialize: ${DATABASE_INITIALIZE:-false}
+      Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
     depends_on:
       postgres_db:
         condition: service_healthy
-    networks:
-      - auth_network
     restart: unless-stopped
 
   authadmin-panel:
     build:
       context: ./AuthServer-AdminPanel
       dockerfile: Dockerfile
-    container_name: authadmin-panel
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
     depends_on:
       - authserver-api
-    networks:
-      - auth_network
     restart: unless-stopped
-
-  pgadmin_panel:
-    image: dpage/pgadmin4
-    container_name: pgadmin_panel
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "5050:80"
-    depends_on:
-      postgres_db:
-        condition: service_healthy
-    networks:
-      - auth_network
 
 volumes:
   postgres_data:
     name: my-postgres-env_pgdata
-
-networks:
-  auth_network:
-    driver: bridge

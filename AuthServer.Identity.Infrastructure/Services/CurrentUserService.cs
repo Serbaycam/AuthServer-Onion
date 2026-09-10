@@ -22,12 +22,6 @@ namespace AuthServer.Identity.Infrastructure.Services
                 var request = _httpContextAccessor.HttpContext?.Request;
                 if (request == null) return "Unknown";
 
-                var forwardedFor = request.Headers["X-Forwarded-For"].FirstOrDefault();
-                if (!string.IsNullOrEmpty(forwardedFor))
-                {
-                    return forwardedFor;
-                }
-
                 return request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
             }
         }

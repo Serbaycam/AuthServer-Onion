@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Dtos;
+using AuthServer.Identity.Application.Dtos;
 using AuthServer.Identity.Domain.Entities;
 using System.Security.Claims;
 
@@ -6,8 +6,8 @@ namespace AuthServer.Identity.Application.Interfaces
 {
     public interface ITokenService
     {
-        Task<TokenDto> CreateTokenAsync(AppUser user, IList<string> roles);
+        Task<TokenDto> CreateTokenAsync(AppUser user, IList<string> roles, Guid sessionId);
         string GenerateRefreshToken();
-        ClaimsPrincipal GetPrincipalFromExpiredToken(string token);
+
     }
 }

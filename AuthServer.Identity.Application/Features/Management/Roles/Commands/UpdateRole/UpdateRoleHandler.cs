@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Wrappers;
+using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
@@ -15,8 +15,10 @@ namespace AuthServer.Identity.Application.Features.Management.Roles.Commands.Upd
             var role = await _roleManager.FindByIdAsync(request.RoleId);
             if (role == null) return new ServiceResponse<bool>("Rol bulunamadı.");
 
+            if (role.Name is "SuperAdmin" or "Basic") return new ServiceResponse<bool>("Sistem rolünün adı değiştirilemez.");
             role.Name = request.NewRoleName;
-            await _roleManager.UpdateAsync(role);
+            var result = await _roleManager.UpdateAsync(role);
+            if (!result.Succeeded) return new ServiceResponse<bool>("Rol güncellenemedi.") { Errors = result.Errors.Select(e => e.Description).ToList() };
 
             return new ServiceResponse<bool>(true, "Rol güncellendi.");
         }

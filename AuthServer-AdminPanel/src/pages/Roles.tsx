@@ -37,7 +37,17 @@ export default function Roles() {
   };
 
   useEffect(() => {
-    fetchRolesAndPerms();
+    const controller = new AbortController();
+    void Promise.all(['/RoleManagement/roles', '/RoleManagement/permissions'].map(endpoint =>
+      fetchWithAuth(endpoint, { signal: controller.signal }).then(res => res.json())))
+      .then(([rolesData, permsData]) => {
+        if (controller.signal.aborted) return;
+        setRoles(rolesData.data || []);
+        setAllPermissions(permsData.data || []);
+      })
+      .catch(error => { if (!controller.signal.aborted) console.error(error); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, []);
 
   const loadRolePermissions = async (roleId: string) => {
@@ -48,7 +58,7 @@ export default function Roles() {
         const data = await res.json();
         // The API returns [{ permissionName: "Permissions.Users.View" }], map to string array:
         const dtoList = data.data || [];
-        setRolePermissions(dtoList.map((p: any) => p.permissionName));
+        setRolePermissions(dtoList.map((p: { permissionName: string }) => p.permissionName));
       }
     } catch (err) {
       console.error(err);

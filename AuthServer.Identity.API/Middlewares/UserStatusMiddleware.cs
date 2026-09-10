@@ -1,61 +1,41 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-namespace AuthServer.Identity.API.Middlewares
+
+namespace AuthServer.Identity.API.Middlewares;
+
+public class UserStatusMiddleware(RequestDelegate next)
 {
-    public class UserStatusMiddleware
+    public async Task InvokeAsync(HttpContext context, IApplicationDbContext db, UserManager<AppUser> users)
     {
-        private readonly RequestDelegate _next;
-
-        public UserStatusMiddleware(RequestDelegate next)
+        if (context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() != null ||
+            context.User.Identity?.IsAuthenticated != true)
         {
-            _next = next;
+            await next(context);
+            return;
         }
 
-        public async Task Invoke(HttpContext context, IApplicationDbContext dbContext)
+        var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var user = userId == null ? null : await users.FindByIdAsync(userId);
+        var now = DateTime.UtcNow;
+        if (user == null || !user.IsActive || await users.IsLockedOutAsync(user) ||
+            context.User.FindFirstValue("security_stamp") != user.SecurityStamp ||
+            !Guid.TryParse(context.User.FindFirstValue("sid"), out var sessionId) ||
+            !await db.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == sessionId &&
+                t.UserId == user.Id && t.RevokedDate == null && t.Expires > now, context.RequestAborted))
         {
-            // --- DÜZELTME BAŞLANGICI ---
-            // Login, Register veya Refresh Token işlemi yapılıyorsa KONTROL ETME!
-            // Çünkü adam zaten yeni oturum açmaya çalışıyor.
-            var path = context.Request.Path.Value?.ToLower();
-            if (path != null && (
-                path.Contains("/api/auth/login") ||
-                path.Contains("/api/auth/refresh-token")
-                ))
-            {
-                await _next(context);
-                return;
-            }
-            // --- DÜZELTME BİTİŞİ ---
-            // 1. Kullanıcı giriş yapmış mı bak (Token var mı?)
-            if (context.User.Identity != null && context.User.Identity.IsAuthenticated)
-            {
-                // 2. UserId'yi al
-                var userIdStr = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                             ?? context.User.FindFirst("uid")?.Value;
-
-                if (!string.IsNullOrEmpty(userIdStr) && Guid.TryParse(userIdStr, out Guid userId))
-                {
-                    // 3. Veritabanından Kullanıcıyı ve Token Durumunu Kontrol Et
-                    // En son iptal edilmemiş bir RefreshToken'ı var mı?
-                    // VEYA direkt User tablosunda "SecurityStamp" kontrolü yapılabilir (daha ileri seviye).
-                    // Biz şimdilik "Bu kullanıcının hiç aktif oturumu kalmış mı?" diye bakalım.
-
-                    var hasActiveSession = await dbContext.RefreshTokens
-                        .AnyAsync(t => t.UserId == userId && t.RevokedDate == null);
-
-                    // Eğer adamın hiç aktif refresh token'ı yoksa, elindeki Access Token ile de işlem yapamazsın!
-                    if (!hasActiveSession)
-                    {
-                        context.Response.StatusCode = 401; // Unauthorized
-                        await context.Response.WriteAsync("Oturumunuz sonlandırılmıştır. (Global Logout)");
-                        return; // İsteği burada kes, Controller'a gitmesin.
-                    }
-                }
-            }
-
-            // Sorun yoksa devam et
-            await _next(context);
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsJsonAsync(new { succeeded = false, message = "Oturum geçersiz veya sonlandırılmış." });
+            return;
         }
+
+        // Evaluate role authorization against current membership, never stale JWT roles.
+        var identity = (ClaimsIdentity)context.User.Identity!;
+        foreach (var claim in identity.FindAll(identity.RoleClaimType).ToList()) identity.RemoveClaim(claim);
+        foreach (var role in await users.GetRolesAsync(user)) identity.AddClaim(new Claim(identity.RoleClaimType, role));
+        await next(context);
     }
 }

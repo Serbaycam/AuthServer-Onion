@@ -4,126 +4,102 @@ using AuthServer.Identity.Domain.Constants;
 using AuthServer.Identity.Domain.Entities;
 using AuthServer.Identity.Infrastructure;
 using AuthServer.Identity.Persistence;
+using AuthServer.Identity.Persistence.Context;
 using AuthServer.Identity.Persistence.Seeds;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
-using AuthServer.Identity.Persistence.Context;
-var builder = WebApplication.CreateBuilder(args);
+using System.Threading.RateLimiting;
 
-// --- 1. Service Registration (Servis Kayıtları) ---
+var builder = WebApplication.CreateBuilder(args);
+var secret = builder.Configuration["JwtSettings:Secret"];
+var issuer = builder.Configuration["JwtSettings:Issuer"];
+var audience = builder.Configuration["JwtSettings:Audience"];
+if (string.IsNullOrWhiteSpace(secret) || Encoding.UTF8.GetByteCount(secret) < 32 ||
+    string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience))
+    throw new InvalidOperationException("Configure JWT issuer, audience and a random secret of at least 32 bytes.");
+if (string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("DefaultConnection")))
+    throw new InvalidOperationException("Configure ConnectionStrings:DefaultConnection.");
+
 builder.Services.AddMemoryCache();
-builder.Services.AddCors(options =>
+builder.Services.AddCors(options => options.AddPolicy("AdminPanel", policy =>
 {
-    options.AddPolicy("AllowAdminPanel",
-        policy => policy.WithOrigins("http://localhost:3000")
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials());
-});
-// Kendi katmanlarımızı yüklüyoruz
+    var origins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+    if (origins.Length > 0) policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod();
+}));
 builder.Services.AddPersistenceServices(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddApplicationServices();
-// JWT Authentication Ayarları
-// Bu ayar API'ye gelen "Authorization: Bearer <token>" başlığını okumasını sağlar.
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(o =>
+    options.DefaultForbidScheme = JwtBearerDefaults.AuthenticationScheme;
+}).AddJwtBearer(options =>
 {
-    o.RequireHttpsMetadata = false;
-    o.SaveToken = false;
-    o.TokenValidationParameters = new TokenValidationParameters
+    options.RequireHttpsMetadata = true;
+    options.MapInboundClaims = true;
+    options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
-        ClockSkew = TimeSpan.Zero, // Token süresi bittiği an hata versin (Varsayılan 5 dk tolerans vardır)
-
-        ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
-        ValidAudience = builder.Configuration["JwtSettings:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"]))
+        ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+        ClockSkew = TimeSpan.Zero,
+        ValidIssuer = issuer,
+        ValidAudience = audience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret))
     };
 });
 builder.Services.AddAuthorization(options =>
 {
-    // Permissions sınıfındaki stringleri bul
-    var permissions = typeof(Permissions).GetNestedTypes()
-        .SelectMany(c => c.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy))
-        .Select(f => f.GetValue(null).ToString())
-        .Where(p => p != null);
-
-    foreach (var permission in permissions)
-    {
-        // ARTIK BURASI DEĞİŞTİ:
-        // Eskiden: policy.RequireClaim(...) diyorduk.
-        // Şimdi: policy.AddRequirements(new PermissionRequirement(...)) diyoruz.
-        // Bu sayede bizim yazdığımız Handler devreye girecek.
-        options.AddPolicy(permission, policy =>
-            policy.AddRequirements(new PermissionRequirement(permission)));
-    }
+    options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+    foreach (var permission in typeof(Permissions).GetNestedTypes()
+        .SelectMany(t => t.GetFields()).Where(f => f.IsLiteral && f.FieldType == typeof(string))
+        .Select(f => (string)f.GetRawConstantValue()!))
+        options.AddPolicy(permission, policy => policy.RequireAuthenticatedUser()
+            .AddRequirements(new PermissionRequirement(permission)));
 });
-// API Controller desteği
-builder.Services.AddControllers();
-
-// OpenAPI (Swagger alternatifi yeni .NET özelliği)
-builder.Services.AddOpenApi();
-
-var app = builder.Build();
-
-// --- 2. HTTP Request Pipeline (Middleware Sırası ÇOK ÖNEMLİDİR) ---
-
-if (app.Environment.IsDevelopment())
+builder.Services.AddRateLimiter(options =>
 {
-    // .NET 9 ile gelen standart OpenAPI sayfası
-    app.MapOpenApi();
-}
-
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+        }));
+});
+builder.Services.AddControllers();
+builder.Services.AddOpenApi();
+var app = builder.Build();
 app.UseMiddleware<GlobalExceptionMiddleware>();
+if (app.Environment.IsDevelopment()) app.MapOpenApi();
+else app.UseHsts();
 app.UseHttpsRedirection();
-
-// !!! KRİTİK BÖLÜM !!!
-// Sıralama: Önce kimlik var mı? (AuthN) -> Sonra yetkisi var mı? (AuthZ)
-app.UseCors("AllowAdminPanel");
+app.UseRouting();
+app.UseCors("AdminPanel");
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseMiddleware<UserStatusMiddleware>();
 app.UseAuthorization();
-// Controller'ları endpoint olarak haritala
 app.MapControllers();
-// --- SEEDING BAŞLANGICI ---
-using (var scope = app.Services.CreateScope())
+
+// Run migrations as a deployment step in production; opt in for local/bootstrap use.
+if (builder.Configuration.GetValue<bool>("Database:Initialize"))
 {
+    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
-    try
-    {
-        var userManager = services.GetRequiredService<UserManager<AppUser>>();
-        var roleManager = services.GetRequiredService<RoleManager<AppRole>>();
-        var dbContext = services.GetRequiredService<AppDbContext>();
-
-        // Otomatik veritabanı göçü (migration) işlemi
-        // (docker container ilk ayağa kalkarken Update-Database işlemini kendisi yapar)
-        await dbContext.Database.MigrateAsync();
-
-        // Rolleri Ekle
-        await ContextSeed.SeedRolesAsync(userManager, roleManager);
-
-        // Admini Ekle
-        await ContextSeed.SeedSuperAdminAsync(userManager, roleManager);
-
-        // Role Claim'lerini Ekle
-        await ContextSeed.SeedRoleClaimsAsync(roleManager);
-    }
-    catch (Exception ex)
-    {
-        // Loglama yapabilirsin
-        Console.WriteLine("Seeding sırasında hata oluştu: " + ex.Message);
-    }
+    await services.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+    var users = services.GetRequiredService<UserManager<AppUser>>();
+    var roles = services.GetRequiredService<RoleManager<AppRole>>();
+    await ContextSeed.SeedRolesAsync(users, roles);
+    await ContextSeed.SeedSuperAdminAsync(users, roles, builder.Configuration);
 }
-// --- SEEDING BİTİŞİ ---
 app.Run();
+
+public partial class Program { }
