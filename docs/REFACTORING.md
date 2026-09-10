@@ -24,6 +24,8 @@
 | Orta | DB/pgAdmin ağda açık, pgAdmin sabit parolalıydı. | pgAdmin varsayılan stack'ten çıkarıldı; DB/API internal, panel loopback; sırlar env üzerinden. |
 | Düşük | Kullanılmayan AutoMapper/FluentValidation paketleri, başlangıç görselleri ve çelişen kurulum belgesi vardı. | Kullanılmayan öğeler kaldırıldı, `.cs.cs` dosyası düzeltildi, README birleştirildi. |
 
+CI restore sırasında görülen `Microsoft.OpenApi 2.0.0` güvenlik uyarısı için 2.x serisinin düzeltilmiş `2.7.5` sürümü doğrudan sabitlendi. Kaynak: [Microsoft OpenAPI güvenlik duyurusu](https://github.com/advisories/GHSA-v5pm-xwqc-g5wc).
+
 ## Tasarım kararları
 
 Mevcut Identity/EF Core modelini tümüyle farklı bir identity sağlayıcısıyla değiştirmek kullanıcı, şifre hash'leri ve migration sürekliliğini bozacağı için mevcut katmanları koruyan bir güvenlik refactoring'i yapıldı. Laboratuvar rol/izin adları başka tüketicileri kırmamak için korundu; yeni kurulumda otomatik izin verilmez. Ayrı uygulama/tenant izin kataloğu henüz yoktur.
@@ -39,7 +41,7 @@ Yönetim uçları SuperAdmin ile sınırlı kalır. Mevcut laboratuvar permissio
 - Panel production build ve TypeScript kontrolü yerelde başarılı.
 - Panel ESLint yerelde başarılı.
 - Gerçek API istemci modülünü kullanan 3 Node testi başarılı: paralel 401 tek refresh, logout/refresh yarışı, başarısız refresh'te sonlanma.
-- PostgreSQL üzerinde .NET entegrasyon testleri ve GitHub Actions workflow eklendi. Bu çalışma ortamında .NET SDK olmadığı için yerel backend derlemesi/testi çalıştırılamadı. CI sonucu ayrıca kontrol edilmelidir; dosyanın varlığı testlerin geçtiği anlamına gelmez.
+- Backend derlemesi ve PostgreSQL güvenlik entegrasyon testleri GitHub Actions üzerinde çalıştırıldı. İlk 7 senaryo başarılı oldu; migration geçişi için eklenen senaryo dahil son commit sonucu PR kontrollerinden izlenebilir. Yerel ortamda .NET SDK bulunmadığından backend doğrulaması CI üzerinde yapılır.
 
 ## Açık sınırlar ve sonraki işler
 

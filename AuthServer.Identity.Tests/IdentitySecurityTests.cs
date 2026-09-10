@@ -13,6 +13,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Identity;
 using Npgsql;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.AspNetCore.TestHost;
 using AuthServer.Identity.Application.Interfaces;
 using Xunit;
@@ -179,6 +181,26 @@ public sealed class IdentitySecurityTests : IAsyncLifetime
         Assert.DoesNotContain("Simulated audit failure", await response.Content.ReadAsStringAsync());
         using var scope = factory.Services.CreateScope();
         Assert.Null(await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByEmailAsync("rollback@example.test"));
+    }
+
+    [Fact]
+    public async Task SecurityMigrationErasesLegacySecretsWithoutDeletingUsers()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260420180544_InitialPostgres");
+        var legacy = new RefreshToken { Token = "legacy-plaintext-secret", ReplacedByToken = "legacy-successor-secret",
+            UserId = adminId, CreatedByIp = "test", Expires = DateTime.UtcNow.AddDays(1) };
+        db.RefreshTokens.Add(legacy);
+        await db.SaveChangesAsync();
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+        var migrated = await db.RefreshTokens.SingleAsync(t => t.Id == legacy.Id);
+        Assert.NotNull(migrated.RevokedDate);
+        Assert.NotEqual("legacy-plaintext-secret", migrated.Token);
+        Assert.Null(migrated.ReplacedByToken);
+        Assert.True(await db.Users.AnyAsync(u => u.Id == adminId));
     }
 
     private sealed class FailingAuditService : IAuditService
