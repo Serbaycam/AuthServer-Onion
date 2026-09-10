@@ -15,15 +15,6 @@ using System.Text;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
-var secret = builder.Configuration["JwtSettings:Secret"];
-var issuer = builder.Configuration["JwtSettings:Issuer"];
-var audience = builder.Configuration["JwtSettings:Audience"];
-if (string.IsNullOrWhiteSpace(secret) || Encoding.UTF8.GetByteCount(secret) < 32 ||
-    string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience))
-    throw new InvalidOperationException("Configure JWT issuer, audience and a random secret of at least 32 bytes.");
-if (string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("DefaultConnection")))
-    throw new InvalidOperationException("Configure ConnectionStrings:DefaultConnection.");
-
 builder.Services.AddMemoryCache();
 builder.Services.AddCors(options => options.AddPolicy("AdminPanel", policy =>
 {
@@ -50,9 +41,9 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
         ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
         ClockSkew = TimeSpan.Zero,
-        ValidIssuer = issuer,
-        ValidAudience = audience,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret))
+        ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+        ValidAudience = builder.Configuration["JwtSettings:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"]!))
     };
 });
 builder.Services.AddAuthorization(options =>

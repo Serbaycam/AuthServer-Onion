@@ -15,7 +15,11 @@ namespace AuthServer.Identity.Persistence
             services.AddTransient(typeof(MediatR.IPipelineBehavior<,>), typeof(ManagementTransactionBehavior<,>));
             // DbContext'i SQL Server'a bağlıyoruz
             services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+                {
+                    var connection = configuration.GetConnectionString("DefaultConnection");
+                    if (string.IsNullOrWhiteSpace(connection)) throw new InvalidOperationException("Configure ConnectionStrings:DefaultConnection.");
+                    options.UseNpgsql(connection);
+                });
 
             // --- EKLENECEK SATIR ---
             // Biri IApplicationDbContext isterse, ona yukarıda oluşturduğun AppDbContext'i ver.
