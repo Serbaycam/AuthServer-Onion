@@ -25,20 +25,20 @@ namespace AuthServer.Identity.API.Controllers
         [HttpGet("all-users")]
         public async Task<IActionResult> GetAll()
         {
-            var response = await _mediator.Send(new GetUsersWithRolesQuery());
+            var response = await _mediator.Send(new GetUsersWithRolesQuery(), HttpContext.RequestAborted);
             return Ok(response);
         }
         [HttpPost("create-user")]
         public async Task<IActionResult> CreateUser(CreateUserByAdminCommand command)
         {
-            var response = await _mediator.Send(command);
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
             if (response.Succeeded) return Ok(response);
             return BadRequest(response);
         }
         [HttpPut("update-user")]
         public async Task<IActionResult> UpdateUser(UpdateUserCommand command)
         {
-            var response = await _mediator.Send(command);
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
             if (response.Succeeded) return Ok(response);
             return BadRequest(response);
         }
@@ -46,7 +46,7 @@ namespace AuthServer.Identity.API.Controllers
         [HttpPost("change-password")]
         public async Task<IActionResult> ChangePassword(AdminChangePasswordCommand command)
         {
-            var response = await _mediator.Send(command);
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
             if (response.Succeeded) return Ok(response);
             return BadRequest(response);
         }
@@ -54,7 +54,7 @@ namespace AuthServer.Identity.API.Controllers
         [HttpPost("assign-roles")]
         public async Task<IActionResult> AssignRoles(AssignRolesCommand command)
         {
-            var response = await _mediator.Send(command);
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
             if (response.Succeeded) return Ok(response);
             return BadRequest(response);
         }
@@ -63,14 +63,14 @@ namespace AuthServer.Identity.API.Controllers
         [HttpPost("update-status")]
         public async Task<IActionResult> UpdateStatus(UpdateUserStatusCommand command)
         {
-            var response = await _mediator.Send(command);
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
             if (response.Succeeded) return Ok(response);
             return BadRequest(response);
         }
         [HttpPost("revoke-all")]
         public async Task<IActionResult> RevokeAll([FromBody] RevokeAllTokensCommand command)
         {
-            var response = await _mediator.Send(command);
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
             if (response.Succeeded) return Ok(response);
             return BadRequest(response);
         }

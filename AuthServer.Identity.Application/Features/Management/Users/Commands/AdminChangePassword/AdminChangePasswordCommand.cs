@@ -7,6 +7,8 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Adm
     public class AdminChangePasswordCommand : IRequest<ServiceResponse<bool>>
     {
         public Guid UserId { get; set; }
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.StringLength(256)]
         public string NewPassword { get; set; }
     }
 }

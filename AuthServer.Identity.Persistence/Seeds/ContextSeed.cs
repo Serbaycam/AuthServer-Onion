@@ -1,91 +1,34 @@
-﻿using AuthServer.Identity.Domain.Constants;
 using AuthServer.Identity.Domain.Entities;
 using AuthServer.Identity.Domain.Enums;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
+using Microsoft.Extensions.Configuration;
 
-namespace AuthServer.Identity.Persistence.Seeds
+namespace AuthServer.Identity.Persistence.Seeds;
+
+public static class ContextSeed
 {
-    public static class ContextSeed
+    public static async Task SeedRolesAsync(UserManager<AppUser> users, RoleManager<AppRole> roles)
     {
-        public static async Task SeedRolesAsync(UserManager<AppUser> userManager, RoleManager<AppRole> roleManager)
-        {
-            // 1. Rolleri Veritabanına Ekle
-            // Enum'daki her bir değeri gez ve veritabanında yoksa oluştur.
-            foreach (Roles role in Enum.GetValues<Roles>())
-            {
-                var roleName = role.ToString();
+        foreach (var name in Enum.GetNames<Roles>())
+            if (!await roles.RoleExistsAsync(name)) Ensure(await roles.CreateAsync(new AppRole { Name = name }));
+    }
 
-                if (!await roleManager.RoleExistsAsync(roleName))
-                {
-                    await roleManager.CreateAsync(new AppRole
-                    {
-                        Name = roleName
-                    });
-                }
-            }
-        }
+    public static async Task SeedSuperAdminAsync(UserManager<AppUser> users, RoleManager<AppRole> roles, IConfiguration configuration)
+    {
+        var email = configuration["Bootstrap:AdminEmail"];
+        var password = configuration["Bootstrap:AdminPassword"];
+        if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(password)) return;
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            throw new InvalidOperationException("Both bootstrap administrator email and password are required.");
+        // Never elevate an existing account just because its email matches configuration.
+        if (await users.FindByEmailAsync(email) != null) return;
+        var user = new AppUser { UserName = email, Email = email, FirstName = "System", LastName = "Administrator", IsActive = true, EmailConfirmed = true };
+        Ensure(await users.CreateAsync(user, password));
+        Ensure(await users.AddToRoleAsync(user, Roles.SuperAdmin.ToString()));
+    }
 
-        public static async Task SeedSuperAdminAsync(UserManager<AppUser> userManager, RoleManager<AppRole> roleManager)
-        {
-            // 2. Default Süper Admin Kullanıcısını Oluştur
-            var superUser = new AppUser
-            {
-                UserName = "superadmin",
-                Email = "superadmin@AuthServer.local", // Bu maili değiştirebilirsin
-                FirstName = "admin",
-                LastName = "super",
-                EmailConfirmed = true,
-                PhoneNumberConfirmed = true,
-                IsActive = true
-            };
-
-            if (userManager.Users.All(u => u.Id != superUser.Id))
-            {
-                var user = await userManager.FindByEmailAsync(superUser.Email);
-                if (user == null)
-                {
-                    // Kullanıcıyı oluştur (Şifre: Pa$$word123!)
-                    await userManager.CreateAsync(superUser, "Pa$$word123!");
-
-                    // Kullanıcıya Rolleri Ata
-                    await userManager.AddToRoleAsync(superUser, Roles.SuperAdmin.ToString());
-                }
-            }
-        }
-        public static async Task SeedRoleClaimsAsync(RoleManager<AppRole> roleManager)
-        {
-            // A) LabManager Rolünü Bul
-            var labManagerRole = await roleManager.FindByNameAsync(Roles.LabManager.ToString());
-            if (labManagerRole != null)
-            {
-                // Şefe Laboratuvar ile ilgili TÜM yetkileri ver
-                await AddClaimIfNotExists(roleManager, labManagerRole, Permissions.Laboratories.Create);
-                await AddClaimIfNotExists(roleManager, labManagerRole, Permissions.Laboratories.Edit);
-                await AddClaimIfNotExists(roleManager, labManagerRole, Permissions.Laboratories.View);
-                await AddClaimIfNotExists(roleManager, labManagerRole, Permissions.Laboratories.Delete);
-            }
-
-            // B) LabTechnician Rolünü Bul
-            var technicianRole = await roleManager.FindByNameAsync(Roles.LabTechnician.ToString());
-            if (technicianRole != null)
-            {
-                // Teknisyene SADECE Görüntüleme ver
-                await AddClaimIfNotExists(roleManager, technicianRole, Permissions.Laboratories.Create);
-                await AddClaimIfNotExists(roleManager, technicianRole, Permissions.Laboratories.Edit);
-                await AddClaimIfNotExists(roleManager, technicianRole, Permissions.Laboratories.View);
-            }
-        }
-
-        // Yardımcı Metod (Aynı yetkiyi 2 kere eklememek için)
-        private static async Task AddClaimIfNotExists(RoleManager<AppRole> roleManager, AppRole role, string permission)
-        {
-            var allClaims = await roleManager.GetClaimsAsync(role);
-            if (!allClaims.Any(a => a.Type == "permission" && a.Value == permission))
-            {
-                await roleManager.AddClaimAsync(role, new Claim("permission", permission));
-            }
-        }
+    private static void Ensure(IdentityResult result)
+    {
+        if (!result.Succeeded) throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
     }
 }

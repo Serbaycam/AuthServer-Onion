@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Domain.Entities;
+using AuthServer.Identity.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -9,6 +9,8 @@ namespace AuthServer.Identity.Persistence.Configurations
         public void Configure(EntityTypeBuilder<RefreshToken> builder)
         {
             builder.HasKey(x => x.Id);
+            builder.Property(x => x.RevokedDate).IsConcurrencyToken();
+            builder.HasIndex(x => x.Token).IsUnique();
 
             builder.Property(x => x.Token).IsRequired().HasMaxLength(200);
 

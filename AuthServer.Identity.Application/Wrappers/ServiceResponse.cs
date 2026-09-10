@@ -1,6 +1,8 @@
-﻿namespace AuthServer.Identity.Application.Wrappers
+namespace AuthServer.Identity.Application.Wrappers
 {
-    public class ServiceResponse<T>
+    public interface IServiceResponse { bool Succeeded { get; } }
+
+    public class ServiceResponse<T> : IServiceResponse
     {
         public T Data { get; set; }
         public bool Succeeded { get; set; }

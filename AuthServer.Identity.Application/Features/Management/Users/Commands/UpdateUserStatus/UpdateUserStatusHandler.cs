@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
@@ -22,6 +22,9 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Upd
         {
             var user = await _userManager.FindByIdAsync(request.UserId.ToString());
             if (user == null) return new ServiceResponse<bool>("Kullanıcı bulunamadı.");
+
+            if (!request.IsActive && await AuthServer.Identity.Application.Security.AdministratorGuard.IsLastActiveAdministratorAsync(_userManager, user))
+                return new ServiceResponse<bool>("Son aktif yönetici pasifleştirilemez.");
 
             user.IsActive = request.IsActive; // Kullanıcıyı pasife çek
 

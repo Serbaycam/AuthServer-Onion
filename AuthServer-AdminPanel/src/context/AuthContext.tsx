@@ -1,89 +1,39 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
+import { getTokens, setTokens, subscribe, type AuthTokens } from '../authStore';
+import { logoutSession } from '../api';
 
-interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
-
-interface User {
-  email: string;
-  roles: string[];
-}
-
+interface User { email: string; roles: string[] }
 interface AuthContextType {
   isAuthenticated: boolean;
   tokens: AuthTokens | null;
   user: User | null;
-  login: (tokens: AuthTokens, tokenRawPayload?: any) => void;
+  login: (tokens: AuthTokens) => void;
   logout: () => void;
 }
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [tokens, setTokens] = useState<AuthTokens | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Check local storage on initial load
-    const storedTokens = localStorage.getItem('auth_tokens');
-    if (storedTokens) {
-      try {
-        const parsed = JSON.parse(storedTokens);
-        setTokens(parsed);
-        // Simple decode for visual purposes, actual validation is backend
-        const payload = JSON.parse(atob(parsed.accessToken.split('.')[1]));
-        setUser({
-          email: payload.email || '',
-          roles: payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] 
-                 ? (Array.isArray(payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role']) 
-                    ? payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] 
-                    : [payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role']])
-                 : []
-        });
-      } catch (e) {
-        localStorage.removeItem('auth_tokens');
-      }
-    }
-    setLoading(false);
-  }, []);
-
-  const login = (newTokens: AuthTokens, tokenRawPayload?: any) => {
-    setTokens(newTokens);
-    localStorage.setItem('auth_tokens', JSON.stringify(newTokens));
-    if (newTokens.accessToken) {
-        const payload = JSON.parse(atob(newTokens.accessToken.split('.')[1]));
-        setUser({
-            email: payload.email || '',
-            roles: payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] 
-                 ? (Array.isArray(payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role']) 
-                    ? payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] 
-                    : [payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role']])
-                 : []
-        });
-    }
-  };
-
-  const logout = () => {
-    setTokens(null);
-    setUser(null);
-    localStorage.removeItem('auth_tokens');
-  };
-
-  if (loading) return <div style={{ color: 'white' }}>Loading...</div>;
-
-  return (
-    <AuthContext.Provider value={{ isAuthenticated: !!tokens, tokens, user, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+function decodeUser(token: string): User | null {
+  try {
+    const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    const roles = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
+    return { email: payload.email || '', roles: Array.isArray(roles) ? roles : roles ? [roles] : [] };
+  } catch { return null; }
 }
 
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const tokens = useSyncExternalStore(subscribe, getTokens, () => null);
+  const user = tokens ? decodeUser(tokens.accessToken) : null;
+  const logout = () => { void logoutSession().catch(() => { /* Local credentials already cleared. */ }); };
+  return <AuthContext.Provider value={{ tokens, user, isAuthenticated: !!tokens && !!user, login: setTokens, logout }}>
+    {children}
+  </AuthContext.Provider>;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }

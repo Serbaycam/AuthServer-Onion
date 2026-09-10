@@ -25,16 +25,16 @@ namespace AuthServer.Identity.API.Controllers
             // Mevcut isteği yapan token'ı (Access Token) ayırt edemeyiz ama
             // eğer RefreshToken'ı header veya cookie ile gönderiyorsan buraya ekleyebilirsin.
             // Şimdilik boş gönderiyoruz.
-            var query = new GetActiveSessionsQuery();
-            var response = await _mediator.Send(query);
-            return Ok(response);
+            var query = new GetActiveSessionsQuery { CurrentSessionId = Guid.TryParse(User.FindFirstValue("sid"), out var id) ? id : null };
+            var response = await _mediator.Send(query, HttpContext.RequestAborted);
+            return response.Succeeded ? Ok(response) : BadRequest(response);
         }
 
         [HttpPost("kill-session")]
         public async Task<IActionResult> KillSession(KillSessionCommand command)
         {
-            var response = await _mediator.Send(command);
-            return Ok(response);
+            var response = await _mediator.Send(command, HttpContext.RequestAborted);
+            return response.Succeeded ? Ok(response) : BadRequest(response);
         }
     }
 }

@@ -1,62 +1,27 @@
-@AuthServer.Identity.API_HostAddress = https://localhost:7023
+@host = https://localhost:7023
+# Supply credentials locally; never commit real passwords or bearer tokens.
+@email =
+@password =
+@accessToken =
+@refreshToken =
 
-# ==========================================
-# 1. GÝRÝÞ & TOKEN ÝÞLEMLERÝ
-# ==========================================
-
-# @name Login
-POST {{AuthServer.Identity.API_HostAddress}}/api/auth/login
-Accept: application/json
+POST {{host}}/api/auth/login
 Content-Type: application/json
 
-{
-  "email": "superadmin@AuthServer.local",
-  "password": "Pa$$word123!"
-}
+{"email":"{{email}}","password":"{{password}}"}
 
 ###
-
-# Login isteðinden dönen "accessToken" deðerini buraya yapýþtýrýn.
-# Diðer tüm istekler bu deðiþkeni kullanacak.
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxNGM5MzQ3YS1iOTM1LTQ5YjctOGMzYS0wOGRlOWVhMmQ0MTYiLCJlbWFpbCI6InN1cGVyYWRtaW5AQXV0aFNlcnZlci5sb2NhbCIsImp0aSI6IjQ2NmU2NDRkLTc3YWItNDZlZC04OTE2LTAzYzkwZGUzYzUyOSIsImZ1bGxOYW1lIjoiYWRtaW4gc3VwZXIiLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOiJTdXBlckFkbWluIiwiZXhwIjoxNzc2NjY2MDM1LCJpc3MiOiJBdXRoU2VydmVyIiwiYXVkIjoiQXV0aFNlcnZlci5DbGllbnRzIn0.7FBrlIn-xZ6a05Ejjq1xtYNMb96q8jxXXRIR-aTgI4U
-
-### 
-
-# Yönetici Tarafýndan Yeni Kullanýcý Oluþturma
-POST {{AuthServer.Identity.API_HostAddress}}/api/UserManagement/create-user
-Authorization: Bearer {{token}}
+POST {{host}}/api/auth/refresh-token
 Content-Type: application/json
 
-{
-  "firstName": "Ahmet",
-  "lastName": "Yilmaz",
-  "email": "ahmet@lab.local",
-  "password": "NewUser123!",
-  "roles": ["Basic", "LabTechnician"]
-}
+{"refreshToken":"{{refreshToken}}"}
 
 ###
-
-# Kullanýcý Þifresini Deðiþtirme (Force Reset)
-# userId kýsmýna þifresini deðiþtireceðin kullanýcýnýn ID'sini yaz.
-POST {{AuthServer.Identity.API_HostAddress}}/api/UserManagement/change-password
-Authorization: Bearer {{token}}
+POST {{host}}/api/auth/revoke-token
 Content-Type: application/json
 
-{
-  "userId": "487ec7e6-5100-4418-8c3b-08de9ea2d416",
-  "newPassword": "ResetPa$$123"
-}
+{"token":"{{refreshToken}}"}
+
 ###
-# Kullanýcý Bilgilerini Güncelle (Ad, Soyad, Email)
-# userId: Güncellenecek kiþinin ID'si
-PUT {{AuthServer.Identity.API_HostAddress}}/api/UserManagement/update-user
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "userId": "487ec7e6-5100-4418-8c3b-08de9ea2d416",
-  "firstName": "Mehmet",
-  "lastName": "Demir",
-  "email": "mehmet.yeni@lab.local"
-}
+GET {{host}}/api/usermanagement/all-users
+Authorization: Bearer {{accessToken}}

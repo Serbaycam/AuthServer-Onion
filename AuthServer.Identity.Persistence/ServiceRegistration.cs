@@ -12,13 +12,18 @@ namespace AuthServer.Identity.Persistence
     {
         public static void AddPersistenceServices(this IServiceCollection services, IConfiguration configuration)
         {
+            services.AddTransient(typeof(MediatR.IPipelineBehavior<,>), typeof(ManagementTransactionBehavior<,>));
             // DbContext'i SQL Server'a bağlıyoruz
             services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+                {
+                    var connection = configuration.GetConnectionString("DefaultConnection");
+                    if (string.IsNullOrWhiteSpace(connection)) throw new InvalidOperationException("Configure ConnectionStrings:DefaultConnection.");
+                    options.UseNpgsql(connection);
+                });
 
             // --- EKLENECEK SATIR ---
             // Biri IApplicationDbContext isterse, ona yukarıda oluşturduğun AppDbContext'i ver.
-            services.AddScoped<IApplicationDbContext>(provider => provider.GetService<AppDbContext>());
+            services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<AppDbContext>());
             // -----------------------
 
             // Identity Ayarları
@@ -26,7 +31,10 @@ namespace AuthServer.Identity.Persistence
             {
                 // Şifre kuralları (Geliştirme aşamasında gevşek bırakabilirsin)
                 options.Password.RequireDigit = false;
-                options.Password.RequiredLength = 6;
+                options.Password.RequiredLength = 12;
+                options.Lockout.AllowedForNewUsers = true;
+                options.Lockout.MaxFailedAccessAttempts = 5;
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
                 options.Password.RequireNonAlphanumeric = false;
                 options.Password.RequireUppercase = false;
                 options.Password.RequireLowercase = false;

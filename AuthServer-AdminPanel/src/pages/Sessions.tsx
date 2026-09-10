@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { KeyRound, ShieldBan, Clock } from 'lucide-react';
+import { ShieldBan, Clock } from 'lucide-react';
 import { fetchWithAuth } from '../api';
 
 interface ActiveSession {
@@ -18,7 +18,6 @@ export default function Sessions() {
 
   const loadSessions = async () => {
     try {
-      // NOTE: Normally we send currentToken in body/query to identify current
       const res = await fetchWithAuth('/SessionManagement/active-sessions');
       if (res.ok) {
         const data = await res.json();
@@ -34,7 +33,16 @@ export default function Sessions() {
   };
 
   useEffect(() => {
-    loadSessions();
+    const controller = new AbortController();
+    const refresh = () => {
+      void fetchWithAuth('/SessionManagement/active-sessions', { signal: controller.signal })
+        .then(res => res.json()).then(data => { if (!controller.signal.aborted && data.succeeded) setSessions(data.data || []); })
+        .catch(error => { if (!controller.signal.aborted) console.error(error); })
+        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30000);
+    return () => { controller.abort(); window.clearInterval(timer); };
   }, []);
 
   const killSession = async (tokenId: string) => {

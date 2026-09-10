@@ -1,0 +1,42 @@
+name: Verify identity server
+on:
+  pull_request:
+  push:
+    branches: [master, 'refactor/**']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: authserver_tests
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U test -d authserver_tests"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      AUTH_TEST_DATABASE: Host=localhost;Database=authserver_tests;Username=test;Password=test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: AuthServer-AdminPanel/package-lock.json
+      - run: dotnet test AuthServer.Identity.Tests/AuthServer.Identity.Tests.csproj --configuration Release
+      - run: npm ci
+        working-directory: AuthServer-AdminPanel
+      - run: npm run build
+        working-directory: AuthServer-AdminPanel
+      - run: npm run lint
+        working-directory: AuthServer-AdminPanel
+      - run: npm test
+        working-directory: AuthServer-AdminPanel

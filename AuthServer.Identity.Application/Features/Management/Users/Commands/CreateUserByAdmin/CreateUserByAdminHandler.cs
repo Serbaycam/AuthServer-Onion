@@ -9,18 +9,24 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Cre
     public class CreateUserByAdminHandler : IRequestHandler<CreateUserByAdminCommand, ServiceResponse<Guid>>
     {
         private readonly UserManager<AppUser> _userManager;
+        private readonly RoleManager<AppRole> _roleManager;
         private readonly IAuditService _auditService;
         private readonly ICurrentUserService _currentUserService;
 
-        public CreateUserByAdminHandler(UserManager<AppUser> userManager, IAuditService auditService, ICurrentUserService currentUserService)
+        public CreateUserByAdminHandler(UserManager<AppUser> userManager, RoleManager<AppRole> roleManager, IAuditService auditService, ICurrentUserService currentUserService)
         {
             _userManager = userManager;
+            _roleManager = roleManager;
             _auditService = auditService;
             _currentUserService = currentUserService;
         }
 
         public async Task<ServiceResponse<Guid>> Handle(CreateUserByAdminCommand request, CancellationToken cancellationToken)
         {
+            request.Roles = request.Roles?.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new();
+            if (request.Roles.Count == 0) request.Roles.Add("Basic");
+            foreach (var role in request.Roles)
+                if (!await _roleManager.RoleExistsAsync(role)) return new ServiceResponse<Guid>("Rol bulunamadı.");
             // 1. Email kontrolü
             var userExists = await _userManager.FindByEmailAsync(request.Email);
             if (userExists != null)
@@ -52,7 +58,8 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Cre
             // Eğer rol listesi boşsa "Basic" ata
             if (request.Roles == null || !request.Roles.Any()) request.Roles = new List<string> { "Basic" };
 
-            await _userManager.AddToRolesAsync(user, request.Roles);
+            var roleResult = await _userManager.AddToRolesAsync(user, request.Roles.Distinct(StringComparer.OrdinalIgnoreCase));
+            if (!roleResult.Succeeded) return new ServiceResponse<Guid>("Roller atanamadı.") { Errors = roleResult.Errors.Select(e => e.Description).ToList() };
 
             // 5. Audit Log
             await _auditService.LogAsync(

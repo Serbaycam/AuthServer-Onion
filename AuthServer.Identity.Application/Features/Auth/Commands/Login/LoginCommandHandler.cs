@@ -1,3 +1,4 @@
+using AuthServer.Identity.Application.Security;
 using AuthServer.Identity.Application.Dtos;
 using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
@@ -29,23 +30,25 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Login
         public async Task<ServiceResponse<TokenDto>> Handle(LoginCommand request, CancellationToken cancellationToken)
         {
             var user = await _userManager.FindByEmailAsync(request.Email);
-            if (user == null) return new ServiceResponse<TokenDto>("Kullanıcı bulunamadı.");
+            if (user == null) return new ServiceResponse<TokenDto>("Email veya şifre hatalı.");
 
             // Kullanıcı Pasif ise Girişi Engelle (Bunu da ekleyelim tam olsun)
-            if (!user.IsActive) return new ServiceResponse<TokenDto>("Hesabınız pasif durumdadır.");
+            if (!user.IsActive || user.TwoFactorEnabled) return new ServiceResponse<TokenDto>("Email veya şifre hatalı.");
 
-            var signInResult = await _signInManager.CheckPasswordSignInAsync(user, request.Password, false);
+            var signInResult = await _signInManager.CheckPasswordSignInAsync(user, request.Password, true);
             if (!signInResult.Succeeded) return new ServiceResponse<TokenDto>("Email veya şifre hatalı.");
 
             var roles = await _userManager.GetRolesAsync(user);
 
             // 1. Token Üret
-            var tokenDto = await _tokenService.CreateTokenAsync(user, roles);
+            var sessionId = Guid.NewGuid();
+            var tokenDto = await _tokenService.CreateTokenAsync(user, roles, sessionId);
 
             // 2. Refresh Token Nesnesini Hazırla
             var refreshTokenEntity = new Domain.Entities.RefreshToken
             {
-                Token = tokenDto.RefreshToken,
+                Id = sessionId,
+                Token = RefreshTokenHash.Compute(tokenDto.RefreshToken),
                 Expires = tokenDto.RefreshTokenExpiration,
                 CreatedByIp = _currentUserService.IpAddress,
                 CreatedDate = DateTime.UtcNow,

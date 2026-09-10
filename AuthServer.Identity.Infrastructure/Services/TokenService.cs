@@ -20,7 +20,7 @@ namespace AuthServer.Identity.Infrastructure.Services
             _jwtSettings = jwtSettings.Value;
         }
 
-        public Task<TokenDto> CreateTokenAsync(AppUser user, IList<string> roles)
+        public Task<TokenDto> CreateTokenAsync(AppUser user, IList<string> roles, Guid sessionId)
         {
             // 1. Claim'leri Hazırla (Kimlik bilgileri)
             var claims = new List<Claim>
@@ -28,6 +28,8 @@ namespace AuthServer.Identity.Infrastructure.Services
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()), // Token ID
+                new Claim("sid", sessionId.ToString()),
+                new Claim("security_stamp", user.SecurityStamp ?? ""),
                 new Claim("fullName", user.FullName ?? "")
             };
 
@@ -74,27 +76,5 @@ namespace AuthServer.Identity.Infrastructure.Services
             return Convert.ToBase64String(randomNumber);
         }
 
-        public ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
-        {
-            var tokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateAudience = false,
-                ValidateIssuer = false,
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret)),
-                ValidateLifetime = false // Süresi dolsa bile kim olduğunu öğrenmek istiyoruz
-            };
-
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out SecurityToken securityToken);
-
-            if (securityToken is not JwtSecurityToken jwtSecurityToken ||
-                !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
-            {
-                throw new SecurityTokenException("Invalid token");
-            }
-
-            return principal;
-        }
     }
 }

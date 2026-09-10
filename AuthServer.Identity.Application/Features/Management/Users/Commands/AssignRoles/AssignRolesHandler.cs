@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Wrappers;
+using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
@@ -33,6 +33,10 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Ass
                     return new ServiceResponse<bool>($"'{role}' isimli rol sistemde bulunamadı.");
                 }
             }
+
+            if (!request.Roles.Contains("SuperAdmin", StringComparer.OrdinalIgnoreCase) &&
+                await AuthServer.Identity.Application.Security.AdministratorGuard.IsLastActiveAdministratorAsync(_userManager, user))
+                return new ServiceResponse<bool>("Son aktif yöneticinin rolü kaldırılamaz.");
 
             // 2. Kullanıcının mevcut rollerini al
             var currentRoles = await _userManager.GetRolesAsync(user);

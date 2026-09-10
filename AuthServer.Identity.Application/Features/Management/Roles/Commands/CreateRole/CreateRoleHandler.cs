@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Wrappers;
+using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
@@ -15,7 +15,8 @@ namespace AuthServer.Identity.Application.Features.Management.Roles.Commands.Cre
             if (await _roleManager.RoleExistsAsync(request.RoleName))
                 return new ServiceResponse<string>("Bu rol zaten mevcut.");
 
-            await _roleManager.CreateAsync(new AppRole { Name = request.RoleName });
+            var result = await _roleManager.CreateAsync(new AppRole { Name = request.RoleName });
+            if (!result.Succeeded) return new ServiceResponse<string>("Rol oluşturulamadı.") { Errors = result.Errors.Select(e => e.Description).ToList() };
             return new ServiceResponse<string>(request.RoleName, "Rol başarıyla oluşturuldu.");
         }
     }
