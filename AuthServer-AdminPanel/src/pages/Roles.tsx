@@ -1,199 +1,90 @@
-import { useEffect, useState } from 'react';
-import { ShieldAlert, ShieldCheck } from 'lucide-react';
-import { fetchWithAuth } from '../api';
+import { useState, type FormEvent } from 'react';
+import { Pencil, Trash2, ShieldCheck } from 'lucide-react';
+import { request, errorMessage } from '../api';
+import { useResource } from '../hooks/useResource';
+import { ErrorNotice, Loading, SuccessNotice } from '../components/Feedback';
+import { Modal } from '../components/Modal';
+import type { Role, Permission } from '../types';
 
-interface Role {
-  id: string;
-  name: string;
-}
-
+type RoleAction = { kind: 'create' } | { kind: 'rename' | 'delete'; role: Role };
 export default function Roles() {
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [allPermissions, setAllPermissions] = useState<string[]>([]);
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
-  const [rolePermissions, setRolePermissions] = useState<string[]>([]);
-  
-  const [newRoleName, setNewRoleName] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  const fetchRolesAndPerms = async () => {
+  const roles = useResource<Role[]>('/RoleManagement/roles');
+  const catalog = useResource<string[]>('/RoleManagement/permissions');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [action, setAction] = useState<RoleAction | null>(null);
+  const [message, setMessage] = useState('');
+  const selected = roles.data?.find(role => role.id === selectedId);
+  return <div className="fade-in"><div className="page-header split"><div><h1>Roller ve yetkiler</h1><p>Kullanıcı gruplarını ve izinlerini yönetin.</p></div>
+    <button className="btn btn-primary" onClick={() => setAction({ kind: 'create' })}>Rol ekle</button></div>
+    <SuccessNotice message={message} /><ErrorNotice message={roles.error} retry={roles.reload} /><ErrorNotice message={catalog.error} retry={catalog.reload} />
+    {roles.loading ? <Loading /> : <div className="roles-grid"><section className="role-list" aria-label="Roller">
+      {(roles.data || []).map(role => <div className={`role-row ${selectedId === role.id ? 'selected' : ''}`} key={role.id}>
+        <button className="role-select" aria-pressed={selectedId === role.id} onClick={() => setSelectedId(role.id)}>{role.name}</button>
+        {!['SuperAdmin', 'Basic'].includes(role.name) && <div className="actions">
+          <button className="icon-button" aria-label={`${role.name}: adı değiştir`} onClick={() => setAction({ kind: 'rename', role })}><Pencil size={16} /></button>
+          <button className="icon-button danger" aria-label={`${role.name}: sil`} onClick={() => setAction({ kind: 'delete', role })}><Trash2 size={16} /></button>
+        </div>}
+      </div>)}
+      {roles.data?.length === 0 && <p className="empty-state">Henüz rol yok.</p>}
+    </section><section className="permissions-panel" aria-label="Rol yetkileri">
+      {selected && catalog.data ? <RolePermissions key={selected.id} role={selected} catalog={catalog.data} /> : <p className="empty-state">Yetkilerini düzenlemek için bir rol seçin.</p>}
+    </section></div>}
+    {action && <RoleForm action={action} onClose={() => setAction(null)} onComplete={() => {
+      if (action.kind === 'delete' && action.role.id === selectedId) setSelectedId(null);
+      setAction(null); setMessage('Rol işlemi tamamlandı.'); roles.reload();
+    }} />}
+  </div>;
+}
+function RolePermissions({ role, catalog }: { role: Role; catalog: string[] }) {
+  const permissions = useResource<Permission[]>(`/RoleManagement/role-permissions/${encodeURIComponent(role.id)}`);
+  return <><h2><ShieldCheck size={21} /> {role.name}</h2><ErrorNotice message={permissions.error} retry={permissions.reload} />
+    {role.name === 'SuperAdmin' && <p className="notice">SuperAdmin bütün yönetim yetkilerine sahiptir; bu listedeki seçimler yönetim erişimini sınırlamaz.</p>}
+    {permissions.loading ? <Loading message="Yetkiler yükleniyor…" /> : permissions.data &&
+      <PermissionForm key={`${role.id}:${permissions.data.map(p => p.permissionName).join('|')}`} role={role} catalog={catalog} initial={permissions.data.map(p => p.permissionName)} />}
+  </>;
+}
+function PermissionForm({ role, catalog, initial }: { role: Role; catalog: string[]; initial: string[] }) {
+  const [checked, setChecked] = useState(initial);
+  const [baseline, setBaseline] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+  const dirty = [...checked].sort().join('|') !== [...baseline].sort().join('|');
+  const unknown = checked.filter(permission => !catalog.includes(permission));
+  async function submit(event: FormEvent) {
+    event.preventDefault(); if (busy || !dirty) return;
+    setBusy(true); setError(''); setSaved(false);
+    try { await request('/RoleManagement/permissions', { method: 'POST', body: JSON.stringify({ roleId: role.id, permissions: checked }) }); setBaseline([...checked]); setSaved(true); }
+    catch (e) { setError(errorMessage(e)); }
+    finally { setBusy(false); }
+  }
+  return <form onSubmit={submit}><ErrorNotice message={error} /><SuccessNotice message={saved ? 'Yetkiler kaydedildi.' : ''} /><fieldset disabled={busy || role.name === 'SuperAdmin'}>
+    <div className="check-grid">{[...new Set([...catalog, ...unknown])].map(permission => <label className="check-option" key={permission}>
+      <input type="checkbox" checked={checked.includes(permission)} onChange={e => { setSaved(false); setChecked(previous => e.target.checked ? [...previous, permission] : previous.filter(p => p !== permission)); }} />{permission}
+    </label>)}</div>
+    {!!unknown.length && <p className="notice">Katalogdan kaldırılan yetkilerin işaretini kaldırarak kaydedebilirsiniz.</p>}
+    {!catalog.length && <p className="empty-state">Tanımlı yetki bulunamadı.</p>}
+    <button type="submit" className="btn btn-primary" disabled={!dirty}>{busy ? 'Kaydediliyor…' : 'Yetkileri kaydet'}</button>
+  </fieldset></form>;
+}
+function RoleForm({ action, onClose, onComplete }: { action: RoleAction; onClose: () => void; onComplete: () => void }) {
+  const [name, setName] = useState('role' in action ? action.role.name : '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const title = { create: 'Rol ekle', rename: 'Rol adını değiştir', delete: 'Rolü sil' }[action.kind];
+  async function submit(event: FormEvent) {
+    event.preventDefault(); if (busy) return;
+    setBusy(true); setError('');
     try {
-      const [rolesRes, permsRes] = await Promise.all([
-        fetchWithAuth('/RoleManagement/roles'),
-        fetchWithAuth('/RoleManagement/permissions')
-      ]);
-      
-      if (rolesRes.ok && permsRes.ok) {
-        const rolesData = await rolesRes.json();
-        const permsData = await permsRes.json();
-        setRoles(rolesData.data || []);
-        setAllPermissions(permsData.data || []);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void Promise.all(['/RoleManagement/roles', '/RoleManagement/permissions'].map(endpoint =>
-      fetchWithAuth(endpoint, { signal: controller.signal }).then(res => res.json())))
-      .then(([rolesData, permsData]) => {
-        if (controller.signal.aborted) return;
-        setRoles(rolesData.data || []);
-        setAllPermissions(permsData.data || []);
-      })
-      .catch(error => { if (!controller.signal.aborted) console.error(error); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, []);
-
-  const loadRolePermissions = async (roleId: string) => {
-    setSelectedRole(roleId);
-    try {
-      const res = await fetchWithAuth(`/RoleManagement/role-permissions/${roleId}`);
-      if (res.ok) {
-        const data = await res.json();
-        // The API returns [{ permissionName: "Permissions.Users.View" }], map to string array:
-        const dtoList = data.data || [];
-        setRolePermissions(dtoList.map((p: { permissionName: string }) => p.permissionName));
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const savePermissions = async () => {
-    if (!selectedRole) return;
-    try {
-      const res = await fetchWithAuth('/RoleManagement/permissions', {
-        method: 'POST',
-        body: JSON.stringify({ roleId: selectedRole, permissions: rolePermissions })
-      });
-      if (res.ok) {
-        alert("Permissions saved successfully!");
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const togglePermission = (perm: string) => {
-    if (rolePermissions.includes(perm)) {
-      setRolePermissions(rolePermissions.filter(p => p !== perm));
-    } else {
-      setRolePermissions([...rolePermissions, perm]);
-    }
-  };
-
-  const createRole = async () => {
-    if (!newRoleName.trim()) return;
-    try {
-      const res = await fetchWithAuth('/RoleManagement/role', {
-        method: 'POST',
-        body: JSON.stringify({ roleName: newRoleName })
-      });
-      if (res.ok) {
-        setNewRoleName('');
-        fetchRolesAndPerms();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const deleteRole = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (!window.confirm("Are you sure you want to delete this role?")) return;
-    try {
-      const res = await fetchWithAuth(`/RoleManagement/role/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        if (selectedRole === id) setSelectedRole(null);
-        fetchRolesAndPerms();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  if (loading) return <div className="loading-state">Loading roles...</div>;
-
-  return (
-    <div className="fade-in">
-      <div className="page-header">
-        <h1>Roles & Permissions</h1>
-        <p>Manage system roles and assign fine-grained permissions.</p>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 1fr) 2fr', gap: '2rem' }}>
-        <div className="glass-panel" style={{ padding: '1rem' }}>
-          <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ShieldAlert size={20} /> Roles
-          </h3>
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="New role name..." 
-              value={newRoleName}
-              onChange={e => setNewRoleName(e.target.value)}
-              style={{ padding: '0.5rem', flex: 1 }}
-            />
-            <button className="btn btn-primary" onClick={createRole} style={{ padding: '0.5rem 1rem' }}>Add</button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {roles.map(role => (
-              <div
-                key={role.id}
-                onClick={() => loadRolePermissions(role.id)}
-                className={`btn btn-outline ${selectedRole === role.id ? 'btn-primary' : ''}`}
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-              >
-                <span>{role.name}</span>
-                <button 
-                  onClick={(e) => deleteRole(e, role.id)}
-                  style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
-                  title="Delete Role"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '2rem' }}>
-          {selectedRole ? (
-            <>
-              <h3 style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <ShieldCheck size={20} /> Assign Permissions
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                {allPermissions.map(perm => (
-                  <label key={perm} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={rolePermissions.includes(perm)}
-                      onChange={() => togglePermission(perm)}
-                      style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
-                    />
-                    <span style={{ fontSize: '0.9rem' }}>{perm}</span>
-                  </label>
-                ))}
-              </div>
-              <button className="btn btn-primary" onClick={savePermissions}>
-                Save Changes
-              </button>
-            </>
-          ) : (
-            <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '4rem' }}>
-              Select a role from the left to manage permissions.
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+      if (action.kind === 'delete') await request(`/RoleManagement/role/${encodeURIComponent(action.role.id)}`, { method: 'DELETE' });
+      else await request('/RoleManagement/role', { method: action.kind === 'create' ? 'POST' : 'PUT', body: JSON.stringify(action.kind === 'create' ? { roleName: name.trim() } : { roleId: action.role.id, newRoleName: name.trim() }) });
+      onComplete();
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+  }
+  return <Modal title={title} busy={busy} onClose={onClose}><form onSubmit={submit}><ErrorNotice message={error} /><fieldset disabled={busy}>
+    {action.kind === 'delete' ? <p><strong>{action.role.name}</strong> silinecek. Bu role bağlı kullanıcıların yetkileri etkilenecek.</p> :
+      <label>Rol adı<input className="form-control" required maxLength={256} value={name} onChange={e => setName(e.target.value)} /></label>}
+    <div className="modal-actions"><button className="btn btn-outline" type="button" onClick={onClose}>Vazgeç</button>
+      <button className={`btn ${action.kind === 'delete' ? 'btn-danger' : 'btn-primary'}`} type="submit" disabled={action.kind !== 'delete' && !name.trim()}>{busy ? 'İşleniyor…' : action.kind === 'delete' ? 'Sil' : 'Kaydet'}</button></div>
+  </fieldset></form></Modal>;
 }

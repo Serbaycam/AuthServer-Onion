@@ -40,3 +40,13 @@ jobs:
         working-directory: AuthServer-AdminPanel
       - run: npm test
         working-directory: AuthServer-AdminPanel
+      - name: Validate Compose and HTTPS proxy template
+        env:
+          POSTGRES_PASSWORD: disposable-config-check
+          JWT_SECRET: disposable-config-check-key-with-at-least-32-bytes
+        run: |
+          docker compose config --quiet
+          docker run --rm --add-host authserver-api:127.0.0.1 \
+            -e PANEL_PUBLIC_SCHEME=https \
+            -v "$PWD/AuthServer-AdminPanel/nginx.conf:/etc/nginx/templates/default.conf.template:ro" \
+            nginx:alpine nginx -t

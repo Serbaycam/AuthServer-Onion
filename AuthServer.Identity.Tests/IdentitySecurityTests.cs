@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AuthServer.Identity.Application.Dtos;
@@ -7,6 +8,8 @@ using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using AuthServer.Identity.Persistence.Context;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -201,6 +204,138 @@ public sealed class IdentitySecurityTests : IAsyncLifetime
         Assert.NotEqual("legacy-plaintext-secret", migrated.Token);
         Assert.Null(migrated.ReplacedByToken);
         Assert.True(await db.Users.AnyAsync(u => u.Id == adminId));
+    }
+
+    private async Task<JsonElement> BrowserState()
+    {
+        var response = await client.GetAsync("/api/admin-session");
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+    }
+
+    private async Task<HttpResponseMessage> BrowserLogin()
+    {
+        var state = await BrowserState();
+        client.DefaultRequestHeaders.Remove("X-CSRF-Token");
+        client.DefaultRequestHeaders.Add("X-CSRF-Token", state.GetProperty("csrfToken").GetString());
+        var response = await client.PostAsJsonAsync("/api/admin-session/login", new { email = "admin@example.test", password = Password });
+        response.EnsureSuccessStatusCode();
+        var signedIn = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        client.DefaultRequestHeaders.Remove("X-CSRF-Token");
+        client.DefaultRequestHeaders.Add("X-CSRF-Token", signedIn.GetProperty("csrfToken").GetString());
+        return response;
+    }
+
+    [Fact]
+    public async Task BrowserCookieRestoresSessionWithoutExposingBearerCredentials()
+    {
+        using var response = await BrowserLogin();
+        var cookie = response.Headers.GetValues("Set-Cookie").Single(value => value.StartsWith("AuthServer.AdminSession="));
+        Assert.Contains("httponly", cookie.ToLowerInvariant());
+        Assert.Contains("secure", cookie.ToLowerInvariant());
+        Assert.Contains("samesite=strict", cookie.ToLowerInvariant());
+        Assert.Contains("expires=", cookie.ToLowerInvariant());
+        Assert.DoesNotContain("accessToken", await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("refreshToken", await response.Content.ReadAsStringAsync());
+
+        // A fresh page/tab can bootstrap from the cookie alone; no JS storage or Authorization header.
+        using var reloaded = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), HandleCookies = false });
+        reloaded.DefaultRequestHeaders.Add("Cookie", cookie.Split(';')[0]);
+        var restored = await reloaded.GetFromJsonAsync<JsonElement>("/api/admin-session");
+        Assert.Equal(adminId.ToString(), restored.GetProperty("data").GetProperty("user").GetProperty("id").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await reloaded.GetAsync("/api/dashboard/stats")).StatusCode);
+    }
+
+    [Fact]
+    public async Task CookieMutationsRequireCsrfAndLogoutSurvivesPageReload()
+    {
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/admin-session/login", new { email = "admin@example.test", password = Password })).StatusCode);
+        await BrowserLogin();
+        var valid = client.DefaultRequestHeaders.GetValues("X-CSRF-Token").Single();
+        client.DefaultRequestHeaders.Remove("X-CSRF-Token");
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/rolemanagement/role", new { roleName = "Rejected" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/admin-session/logout", new { })).StatusCode);
+        client.DefaultRequestHeaders.Add("X-CSRF-Token", valid);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/rolemanagement/role", new { roleName = "Allowed" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/admin-session/logout", new { })).StatusCode);
+        Assert.Equal(JsonValueKind.Null, (await BrowserState()).GetProperty("user").ValueKind);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.RefreshTokens.AnyAsync(t => t.UserId == adminId && t.RevokedDate == null));
+        Assert.False(await db.Roles.AnyAsync(role => role.Name == "Rejected"));
+    }
+
+    [Fact]
+    public async Task RevokedBrowserCookieCannotRestoreAndDemotedAdministratorLosesAccess()
+    {
+        await BrowserLogin();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+            var user = (await users.FindByIdAsync(adminId.ToString()))!;
+            Assert.True((await users.RemoveFromRoleAsync(user, "SuperAdmin")).Succeeded);
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            foreach (var session in await db.RefreshTokens.Where(t => t.UserId == adminId).ToListAsync()) session.RevokedDate = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(JsonValueKind.Null, (await BrowserState()).GetProperty("user").ValueKind);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+    }
+
+    [Fact]
+    public async Task BrowserRejectsNonAdminLoginWithoutCreatingSession()
+    {
+        using (var scope = factory.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+            var user = (await users.FindByIdAsync(adminId.ToString()))!;
+            Assert.True((await users.RemoveFromRoleAsync(user, "SuperAdmin")).Succeeded);
+        }
+        var state = await BrowserState();
+        client.DefaultRequestHeaders.Add("X-CSRF-Token", state.GetProperty("csrfToken").GetString());
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/admin-session/login", new { email = "admin@example.test", password = Password })).StatusCode);
+        using var check = factory.Services.CreateScope();
+        Assert.False(await check.ServiceProvider.GetRequiredService<AppDbContext>().RefreshTokens.AnyAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HttpsProxySchemeRequiresAnExplicitlyTrustedPeer(bool trusted)
+    {
+        await using var proxyFactory = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IStartupFilter, ProxyPeerFilter>();
+            services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                if (trusted) options.KnownProxies.Add(IPAddress.Parse("192.0.2.10"));
+            });
+        }));
+        using var proxyClient = proxyFactory.CreateClient(new WebApplicationFactoryClientOptions
+        { BaseAddress = new Uri("http://localhost"), AllowAutoRedirect = false });
+        proxyClient.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+        var response = await proxyClient.GetAsync("/api/admin-session");
+        Assert.Equal(trusted ? HttpStatusCode.OK : HttpStatusCode.InternalServerError, response.StatusCode);
+        if (trusted)
+            Assert.Contains(response.Headers.GetValues("Set-Cookie"), value => value.Contains("secure", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class ProxyPeerFilter : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, runNext) =>
+            {
+                context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.10");
+                await runNext(context);
+            });
+            next(app);
+        };
     }
 
     private sealed class FailingAuditService : IAuditService

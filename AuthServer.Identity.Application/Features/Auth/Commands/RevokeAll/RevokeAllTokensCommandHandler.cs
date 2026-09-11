@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Application.Wrappers;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -23,7 +23,7 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.RevokeAll
 
             if (!userTokens.Any())
             {
-                return new ServiceResponse<bool>("Aktif oturum bulunamadı.");
+                return new ServiceResponse<bool>(true, "Aktif oturum bulunmuyor.");
             }
 
             // Hepsini iptal et

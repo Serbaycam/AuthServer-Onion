@@ -6,68 +6,123 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
-// Execute the actual TypeScript modules with no browser or new test dependencies.
-const directory = await mkdtemp(join(tmpdir(), 'auth-tests-'));
+const directory = await mkdtemp(join(tmpdir(), 'admin-session-tests-'));
 for (const name of ['authStore', 'api']) {
   const source = await readFile(new URL(`../src/${name}.ts`, import.meta.url), 'utf8');
   const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext } }).outputText
-    .replace("'./authStore'", "'./authStore.mjs'").replace('import.meta.env.VITE_API_BASE_URL', 'undefined');
+    .replace("'./authStore'", "'./authStore.mjs'");
   await writeFile(join(directory, `${name}.mjs`), output);
 }
 const store = await import(pathToFileURL(join(directory, 'authStore.mjs')).href);
 const api = await import(pathToFileURL(join(directory, 'api.mjs')).href);
 const originalFetch = globalThis.fetch;
 after(async () => { globalThis.fetch = originalFetch; await rm(directory, { recursive: true }); });
+const user = { id: 'admin', email: 'admin@example.test', fullName: 'Test Admin', roles: ['SuperAdmin'] };
+const session = { user, csrfToken: 'csrf-valid', expiresAt: '2030-01-01T00:00:00Z' };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
-const initial = { accessToken: 'old-access', refreshToken: 'old-refresh' };
-const next = { accessToken: 'new-access', refreshToken: 'new-refresh' };
+const envelope = data => json({ succeeded: true, data });
+const ready = () => store.setSession({ ...session, status: 'ready', error: null });
 
-test('parallel 401 responses share one refresh and retry with new credentials', async () => {
-  store.setTokens(initial);
-  let rotations = 0;
+test('reload restores server session without bearer credentials or JS token storage', async () => {
+  store.setSession({ user: null, csrfToken: '', expiresAt: null, status: 'loading', error: null });
   globalThis.fetch = async (url, options) => {
-    if (url.endsWith('refresh-token')) {
-      rotations++;
-      await new Promise(resolve => setTimeout(resolve, 10));
-      return json({ succeeded: true, data: next });
-    }
-    return options.headers.get('Authorization') === 'Bearer new-access' ? json({ ok: true }) : json({}, 401);
+    assert.equal(url, '/api/admin-session');
+    assert.equal(options.credentials, 'same-origin');
+    assert.equal(options.cache, 'no-store');
+    assert.equal(options.headers.get('Authorization'), null);
+    return envelope(session);
   };
-  const results = await Promise.all([api.fetchWithAuth('/one'), api.fetchWithAuth('/two')]);
-  assert.equal(rotations, 1);
-  assert.ok(results.every(result => result.ok));
-  assert.equal(store.getTokens().refreshToken, next.refreshToken);
+  await api.restoreSession();
+  assert.equal(store.getSession().user.id, user.id);
+  assert.equal(store.getSession().status, 'ready');
 });
 
-test('logout during rotation cannot resurrect credentials and revokes the orphan successor', async () => {
-  store.setTokens(initial);
-  let finishRotation;
-  let rotationStarted;
-  const started = new Promise(resolve => { rotationStarted = resolve; });
-  const revoked = [];
+test('simultaneous bootstrap calls share one request and keep loading until resolved', async () => {
+  store.setSession({ user: null, status: 'loading' });
+  let calls = 0;
+  let finish;
+  globalThis.fetch = () => { calls++; return new Promise(resolve => { finish = resolve; }); };
+  const first = api.restoreSession();
+  const second = api.restoreSession();
+  assert.equal(store.getSession().status, 'loading');
+  finish(envelope(session));
+  await Promise.all([first, second]);
+  assert.equal(calls, 1);
+  assert.equal(store.getSession().user.id, user.id);
+});
+
+test('bootstrap network error is recoverable and never masquerades as signed out', async () => {
+  store.setSession({ user: null, status: 'loading' });
+  globalThis.fetch = async () => { throw new TypeError('Offline'); };
+  await assert.rejects(api.restoreSession());
+  assert.equal(store.getSession().status, 'error');
+  globalThis.fetch = async () => envelope(session);
+  await api.restoreSession();
+  assert.equal(store.getSession().user.id, user.id);
+});
+
+test('temporary server failure does not clear an established session', async () => {
+  ready();
+  globalThis.fetch = async () => json({ message: 'Unavailable' }, 503);
+  await assert.rejects(api.restoreSession());
+  assert.equal(store.getSession().user.id, user.id);
+  assert.equal(store.getSession().status, 'ready');
+});
+
+test('cookie mutation sends CSRF and retries only an explicit pre-action rejection once', async () => {
+  ready();
+  let mutations = 0;
   globalThis.fetch = async (url, options) => {
-    if (url.endsWith('refresh-token')) {
-      rotationStarted();
-      return new Promise(resolve => { finishRotation = resolve; });
-    }
-    if (url.endsWith('revoke-token')) { revoked.push(JSON.parse(options.body).token); return json({ succeeded: true }); }
-    return json({}, 401);
+    if (url === '/api/admin-session') return envelope({ ...session, csrfToken: 'new-csrf' });
+    mutations++;
+    if (mutations === 1) return json({ succeeded: false, code: 'csrf_invalid' }, 400);
+    assert.equal(options.headers.get('X-CSRF-Token'), 'new-csrf');
+    return envelope(true);
   };
-  const pending = api.fetchWithAuth('/one');
-  await started;
+  assert.equal(await api.request('/role', { method: 'POST', body: '{}' }), true);
+  assert.equal(mutations, 2);
+});
+
+test('a server-side mutation failure is shown and is not automatically repeated', async () => {
+  ready(); let calls = 0;
+  globalThis.fetch = async () => { calls++; return json({ succeeded: false, message: 'İşlem kaydedilemedi.' }, 500); };
+  await assert.rejects(api.request('/role', { method: 'POST', body: '{}' }), /İşlem kaydedilemedi/);
+  assert.equal(calls, 1);
+  assert.equal(store.getSession().user.id, user.id);
+});
+
+test('validation problem details and legacy HTTP 200 failures are surfaced', async () => {
+  ready();
+  globalThis.fetch = async () => json({ errors: { Email: ['Geçerli e-posta girin.'] } }, 400);
+  await assert.rejects(api.request('/user', { method: 'POST', body: '{}' }), /Geçerli e-posta/);
+  globalThis.fetch = async () => json({ succeeded: false, message: 'Son yönetici kapatılamaz.' });
+  await assert.rejects(api.request('/user', { method: 'POST', body: '{}' }), /Son yönetici/);
+});
+
+test('logout clears state only after successful server revocation', async () => {
+  ready();
+  globalThis.fetch = async url => url === '/api/admin-session' ? envelope(session) : json({ message: 'Connection failed' }, 503);
+  await assert.rejects(api.logoutSession());
+  assert.equal(store.getSession().user.id, user.id);
+  globalThis.fetch = async url => url === '/api/admin-session' ? envelope(session) : envelope({ user: null, csrfToken: 'anonymous', expiresAt: null });
   await api.logoutSession();
-  finishRotation(json({ succeeded: true, data: next }));
-  await pending;
-  assert.equal(store.getTokens(), null);
-  assert.deepEqual(revoked, ['old-refresh', 'new-refresh']);
+  assert.equal(store.getSession().user, null);
 });
 
-test('failed refresh clears the session and does not loop', async () => {
-  store.setTokens(initial);
-  let requests = 0;
-  globalThis.fetch = async () => { requests++; return json({}, 401); };
-  const response = await api.fetchWithAuth('/one');
-  assert.equal(response.status, 401);
-  assert.equal(requests, 2);
-  assert.equal(store.getTokens(), null);
+test('401 clears session, without refresh loops or retrying the protected action', async () => {
+  ready(); let calls = 0;
+  globalThis.fetch = async () => { calls++; return json({}, 401); };
+  await assert.rejects(api.request('/users'), /Oturumunuz sona erdi/);
+  assert.equal(store.getSession().user, null);
+  assert.equal(calls, 1);
+});
+
+test('identity change during CSRF renewal never replays a mutation as the other account', async () => {
+  ready(); let mutations = 0;
+  globalThis.fetch = async url => {
+    if (url === '/api/admin-session') return envelope({ ...session, user: { ...user, id: 'another' } });
+    mutations++; return json({ code: 'csrf_invalid' }, 400);
+  };
+  await assert.rejects(api.request('/users', { method: 'POST', body: '{}' }), /Oturum değişti/);
+  assert.equal(mutations, 1);
 });
