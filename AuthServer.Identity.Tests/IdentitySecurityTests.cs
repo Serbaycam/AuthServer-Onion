@@ -1,4 +1,7 @@
 using System.Net;
+using System.IdentityModel.Tokens.Jwt;
+using System.Text;
+using Microsoft.IdentityModel.Tokens;
 using System.Text.Json;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -76,6 +79,96 @@ public sealed class IdentitySecurityTests : IAsyncLifetime
         return (await response.Content.ReadFromJsonAsync<ServiceResponse<TokenDto>>())!.Data;
     }
     private void Authorize(TokenDto token) => client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+
+    private static Guid SessionId(TokenDto token) => Guid.Parse(new JwtSecurityTokenHandler()
+        .ReadJwtToken(token.AccessToken).Claims.Single(claim => claim.Type == "sid").Value);
+
+    private async Task<TokenDto> Rotate(TokenDto token)
+    {
+        var response = await client.PostAsJsonAsync("/api/auth/refresh-token", new { refreshToken = token.RefreshToken });
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ServiceResponse<TokenDto>>())!.Data;
+    }
+
+    [Fact]
+    public async Task ExpiredAccessTokenCanRefreshWithoutLeavingItsOldSessionActive()
+    {
+        var first = await Login();
+        var independent = await Login();
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(first.AccessToken);
+        var expired = new JwtSecurityToken("tests", "tests", jwt.Claims, expires: DateTime.UtcNow.AddMinutes(-1),
+            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
+                "TEST-ONLY-random-signing-key-not-for-production-1234567890")), SecurityAlgorithms.HmacSha256));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", new JwtSecurityTokenHandler().WriteToken(expired));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+        var next = await Rotate(first); // Expired Authorization header must not prevent refresh.
+        Authorize(next);
+        var listed = (await client.GetFromJsonAsync<ServiceResponse<List<ActiveSessionDto>>>("/api/sessionmanagement/active-sessions"))!.Data;
+        Assert.Equal(2, listed.Count); // One rotated session and a separate login; not two versions of the first.
+        Assert.DoesNotContain(listed, item => item.TokenId == SessionId(first));
+        Assert.Contains(listed, item => item.TokenId == SessionId(next) && item.IsCurrentSession);
+        Assert.Contains(listed, item => item.TokenId == SessionId(independent) && !item.IsCurrentSession);
+        Authorize(first); // Also reject the original, cryptographically unexpired access token.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var old = await db.RefreshTokens.SingleAsync(item => item.Id == SessionId(first));
+        Assert.NotNull(old.RevokedDate);
+        Assert.Equal(RefreshTokenHash.Compute(next.RefreshToken), old.ReplacedByToken);
+        Assert.Equal(2, await db.RefreshTokens.CountAsync(item => item.RevokedDate == null && item.Expires > DateTime.UtcNow));
+    }
+
+    [Fact]
+    public async Task AdministratorClosingAStaleListEntryAlsoClosesItsRotatedSuccessor()
+    {
+        var first = await Login();
+        var independent = await Login();
+        var current = await Rotate(await Rotate(first));
+        Authorize(independent);
+        var response = await client.PostAsJsonAsync("/api/sessionmanagement/kill-session", new { tokenId = SessionId(first) });
+        response.EnsureSuccessStatusCode();
+        Authorize(current);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+        Authorize(independent);
+        var listed = (await client.GetFromJsonAsync<ServiceResponse<List<ActiveSessionDto>>>("/api/sessionmanagement/active-sessions"))!.Data;
+        Assert.Single(listed);
+        Assert.Equal(SessionId(independent), listed[0].TokenId);
+        // Retrying the old action is idempotent and does not kill unrelated logins.
+        (await client.PostAsJsonAsync("/api/sessionmanagement/kill-session", new { tokenId = SessionId(first) })).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+    }
+
+    [Fact]
+    public async Task LogoutUsingAPreRotationCredentialRevokesItsSuccessorOnly()
+    {
+        var first = await Login();
+        var independent = await Login();
+        var current = await Rotate(await Rotate(first));
+        var response = await client.PostAsJsonAsync("/api/auth/revoke-token", new { token = first.RefreshToken });
+        response.EnsureSuccessStatusCode();
+        Authorize(current);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+        Authorize(independent);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+        (await client.PostAsJsonAsync("/api/auth/revoke-token", new { token = first.RefreshToken })).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+    }
+
+    [Fact]
+    public async Task EnablingMfaBlocksBothExistingSingleFactorAccessAndRefresh()
+    {
+        var token = await Login();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+            var user = (await users.FindByIdAsync(adminId.ToString()))!;
+            Assert.True((await users.SetTwoFactorEnabledAsync(user, true)).Succeeded);
+        }
+        var refresh = await client.PostAsJsonAsync("/api/auth/refresh-token", new { refreshToken = token.RefreshToken });
+        Assert.Equal(HttpStatusCode.BadRequest, refresh.StatusCode);
+        Authorize(token);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/dashboard/stats")).StatusCode);
+    }
 
     [Fact]
     public async Task RevokingOneSessionDoesNotLeaveItsAccessTokenValidThroughAnotherSession()
