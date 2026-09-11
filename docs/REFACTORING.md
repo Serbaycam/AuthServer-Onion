@@ -1,5 +1,7 @@
 # İnceleme ve refactoring
 
+Bu belge ilk API refactoring turunun tarihsel kaydıdır. Panelin bellek tabanlı oturumu, arayüz ve test sayıları daha sonra değişti; güncel davranış ve bulgular için [ADMIN_PANEL.md](ADMIN_PANEL.md) belgesine bakın.
+
 İncelenen başlangıç commit'i: `94a52ff143f8c35ed84565f8636d788962dd6c76`.
 
 ## Bulgular ve uygulanan değişiklikler

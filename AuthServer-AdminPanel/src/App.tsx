@@ -21,6 +21,7 @@ function App() {
             
             <Route path="/roles" element={<Roles />} />
             <Route path="/sessions" element={<Sessions />} />
+            <Route path="*" element={<div className="empty-state"><h1>Sayfa bulunamadı</h1><p>Soldaki menüden devam edebilirsiniz.</p></div>} />
           </Route>
         </Routes>
       </AuthProvider>

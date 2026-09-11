@@ -1,3 +1,6 @@
+using AuthServer.Identity.API.Security;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using AuthServer.Identity.API.Middlewares;
 using AuthServer.Identity.Application;
 using AuthServer.Identity.Domain.Constants;
@@ -15,6 +18,16 @@ using System.Text;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    // Trust only explicitly configured proxy addresses/networks, and only the original scheme.
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    foreach (var address in builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [])
+        if (!string.IsNullOrWhiteSpace(address)) options.KnownProxies.Add(System.Net.IPAddress.Parse(address));
+    foreach (var network in builder.Configuration.GetSection("ReverseProxy:KnownNetworks").Get<string[]>() ?? [])
+        if (!string.IsNullOrWhiteSpace(network)) options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+});
 builder.Services.AddMemoryCache();
 builder.Services.AddCors(options => options.AddPolicy("AdminPanel", policy =>
 {
@@ -26,9 +39,23 @@ builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddApplicationServices();
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultForbidScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultAuthenticateScheme = AdminSession.Selector;
+    options.DefaultChallengeScheme = AdminSession.Selector;
+    options.DefaultForbidScheme = AdminSession.Selector;
+}).AddPolicyScheme(AdminSession.Selector, null, options =>
+{
+    options.ForwardDefaultSelector = context => context.Request.Headers.Authorization.ToString()
+        .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? JwtBearerDefaults.AuthenticationScheme : AdminSession.Scheme;
+}).AddCookie(AdminSession.Scheme, options =>
+{
+    options.Cookie.Name = AdminSession.CookieName;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Configuration.GetValue("AdminSession:RequireHttps", true)
+        ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+    options.Cookie.Path = "/api";
+    options.SlidingExpiration = false;
+    options.EventsType = typeof(AdminSessionEvents);
 }).AddJwtBearer(options =>
 {
     options.RequireHttpsMetadata = true;
@@ -65,10 +92,28 @@ builder.Services.AddRateLimiter(options =>
             PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
         }));
 });
-builder.Services.AddControllers();
+builder.Services.AddScoped<AdminSessionEvents>();
+builder.Services.AddScoped<AdminAntiforgeryFilter>();
+builder.Services.AddOptions<AdminSessionOptions>().Bind(builder.Configuration.GetSection("AdminSession"))
+    .Validate(options => options.LifetimeHours is >= 1 and <= 168, "Admin session lifetime must be 1–168 hours.").ValidateOnStart();
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-Token";
+    options.Cookie.Name = "AuthServer.Antiforgery";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.Path = "/api";
+    options.Cookie.SecurePolicy = builder.Configuration.GetValue("AdminSession:RequireHttps", true)
+        ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+});
+var protection = builder.Services.AddDataProtection().SetApplicationName("AuthServer.AdminPanel");
+var keysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(keysPath)) protection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+builder.Services.AddControllers(options => options.Filters.AddService<AdminAntiforgeryFilter>());
 builder.Services.AddOpenApi();
 var app = builder.Build();
 app.UseMiddleware<GlobalExceptionMiddleware>();
+app.UseForwardedHeaders();
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
 else app.UseHsts();
 app.UseHttpsRedirection();

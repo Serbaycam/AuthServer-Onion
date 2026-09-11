@@ -12,7 +12,8 @@ public class UserStatusMiddleware(RequestDelegate next)
     public async Task InvokeAsync(HttpContext context, IApplicationDbContext db, UserManager<AppUser> users)
     {
         if (context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() != null ||
-            context.User.Identity?.IsAuthenticated != true)
+            context.User.Identity?.IsAuthenticated != true ||
+            context.User.Identity.AuthenticationType == AuthServer.Identity.API.Security.AdminSession.Scheme)
         {
             await next(context);
             return;

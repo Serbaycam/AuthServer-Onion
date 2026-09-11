@@ -1,39 +1,42 @@
-import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
-import { getTokens, setTokens, subscribe, type AuthTokens } from '../authStore';
-import { logoutSession } from '../api';
+import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import { getSession, subscribe, type AuthState } from '../authStore';
+import { loginSession, logoutSession, restoreSession } from '../api';
 
-interface User { email: string; roles: string[] }
-interface AuthContextType {
+interface AuthContextType extends AuthState {
   isAuthenticated: boolean;
-  tokens: AuthTokens | null;
-  user: User | null;
-  login: (tokens: AuthTokens) => void;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  retry: () => void;
 }
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-function decodeUser(token: string): User | null {
-  try {
-    const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
-    const payload = JSON.parse(new TextDecoder().decode(bytes));
-    const roles = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
-    return { email: payload.email || '', roles: Array.isArray(roles) ? roles : roles ? [roles] : [] };
-  } catch { return null; }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const tokens = useSyncExternalStore(subscribe, getTokens, () => null);
-  const user = tokens ? decodeUser(tokens.accessToken) : null;
-  const logout = () => { void logoutSession().catch(() => { /* Local credentials already cleared. */ }); };
-  return <AuthContext.Provider value={{ tokens, user, isAuthenticated: !!tokens && !!user, login: setTokens, logout }}>
-    {children}
-  </AuthContext.Provider>;
+  const state = useSyncExternalStore(subscribe, getSession, getSession);
+  useEffect(() => {
+    const refresh = () => { void restoreSession().catch(() => {}); };
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('authserver-session') : null;
+    const notify = () => channel?.postMessage('changed');
+    if (channel) channel.onmessage = refresh;
+    window.addEventListener('focus', refresh);
+    window.addEventListener('admin-session-changed', notify);
+    document.addEventListener('visibilitychange', onVisible);
+    // Remove credentials left by versions older than the memory-only store.
+    try { localStorage.removeItem('auth_tokens'); } catch { /* Storage may be disabled. */ }
+    refresh();
+    const timer = window.setInterval(onVisible, 60000);
+    return () => {
+      window.clearInterval(timer); channel?.close();
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('admin-session-changed', notify);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+  return <AuthContext.Provider value={{ ...state, isAuthenticated: !!state.user, login: loginSession, logout: logoutSession,
+    retry: () => { void restoreSession().catch(() => {}); } }}>{children}</AuthContext.Provider>;
 }
-
 // eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
-  return context;
+  const value = useContext(AuthContext);
+  if (!value) throw new Error('useAuth must be used within AuthProvider');
+  return value;
 }

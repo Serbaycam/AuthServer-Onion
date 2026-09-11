@@ -29,7 +29,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Panel yerel makinede `http://localhost:3000` adresindedir. API ve PostgreSQL host portları dışarı açılmaz. İnternet/intranet üzerinden kullanımda panelin önüne HTTPS reverse proxy koyun. Bu Compose yapılandırması yerel başlangıç içindir; TLS sonlandırmasını kendisi sağlamaz.
+Panel yerel makinede `http://localhost:3000` adresindedir. API ve PostgreSQL host portları dışarı açılmaz. İnternet/intranet üzerinden kullanımda panelin önüne HTTPS reverse proxy koyun ve [HTTPS yapılandırmasını](docs/ADMIN_PANEL.md#https-dağıtımı) uygulayın. Bu Compose yapılandırması yerel başlangıç içindir; TLS sonlandırmasını kendisi sağlamaz.
 
 Başarılı kurulumdan sonra `DATABASE_INITIALIZE=false` yapın, bootstrap e-posta/şifre değerlerini kaldırın ve API konteynerini yeniden oluşturun. Başlangıç hataları artık gizlenmez. Bootstrap mevcut e-posta hesabını otomatik yönetici yapmaz veya şifresini değiştirmez. Yeni kurulumlarda laboratuvar rollerine otomatik izin verilmez; yönetim panelinden açıkça atanır.
 
@@ -57,11 +57,11 @@ Migration geri alınsa bile eski token sırları geri gelmez. Önceki sürüme d
 - Proxy üzerinden gelen istekler varsayılan olarak aynı IP sınırını paylaşır. `X-Forwarded-For` istemci başlığına güvenilmez. Çok instance için ortak rate limiter ve açıkça güvenilen proxy yapılandırması ayrıca gerekir.
 - Son aktif `SuperAdmin` pasifleştirilemez veya rolü kaldırılamaz. `SuperAdmin`/`Basic` rol adları korunur.
 - Kullanıcı oluşturma, rol atama, izin değiştirme ve audit yazımı aynı yönetim transaction'ında tamamlanır. Transaction çakışması 409 döner.
-- Panel token'ları bellekte tutar; sayfa yenilenince tekrar giriş gerekir. Logout sunucudaki oturumu da iptal eder. Kalıcı oturum gerekiyorsa ayrı bir HttpOnly cookie/BFF tasarımı gerekir.
+- Panel varsayılan 12 saat geçerli, HttpOnly ve SameSite=Strict cookie kullanır. Sayfa yenilendiğinde sunucudaki oturum geri yüklenir. Değiştiren isteklerde CSRF doğrulanır; logout oturumu veritabanında da iptal eder. API/JWT tüketicilerinin token sözleşmesi korunur. Ayrıntılar: [panel oturum ve dağıtım belgesi](docs/ADMIN_PANEL.md).
 
 ## Geliştirme ve doğrulama
 
-API için `ConnectionStrings__DefaultConnection` ve `JwtSettings__Secret` ortam değişkenlerini ayarlayın. Panel geliştirme proxy'si API'yi `http://localhost:8080` adresinde bekler; API'yi bu HTTP portunda çalıştırabilir veya `vite.config.ts` içindeki hedefi değiştirebilirsiniz. Ayrı origin kullanılıyorsa `Cors:AllowedOrigins` açıkça tanımlanmalıdır.
+API için `ConnectionStrings__DefaultConnection` ve `JwtSettings__Secret` ortam değişkenlerini ayarlayın. Yalnızca yerel HTTP geliştirmede `AdminSession__RequireHttps=false` kullanın. Panel geliştirme proxy'si API'yi `http://localhost:8080` adresinde bekler; API'yi bu HTTP portunda çalıştırabilir veya `vite.config.ts` içindeki hedefi değiştirebilirsiniz. Panel `/api` üzerinden aynı origin gerektirir; farklı bir sunucuya doğrudan cookie isteği göndermez. Ayrı origin kullanan JWT istemcileri için `Cors:AllowedOrigins` açıkça tanımlanmalıdır.
 
 ```bash
 dotnet build AuthServer.sln
@@ -78,4 +78,4 @@ export AUTH_TEST_DATABASE='Host=localhost;Database=authserver_tests;Username=tes
 dotnet test AuthServer.Identity.Tests/AuthServer.Identity.Tests.csproj
 ```
 
-GitHub Actions PostgreSQL üzerinde migration ve güvenlik entegrasyon testlerini, panel TypeScript/build/lint ve token yarış koşulu testlerini çalıştırır. Ayrıntılı inceleme ve sınırlar: [docs/REFACTORING.md](docs/REFACTORING.md).
+GitHub Actions PostgreSQL üzerinde migration ve güvenlik entegrasyon testlerini, panel TypeScript/build/lint, oturum ve arayüz regresyon testlerini çalıştırır. Ayrıntılı inceleme ve sınırlar: [docs/REFACTORING.md](docs/REFACTORING.md).

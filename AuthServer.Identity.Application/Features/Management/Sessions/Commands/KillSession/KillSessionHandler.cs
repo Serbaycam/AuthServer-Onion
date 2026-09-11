@@ -23,7 +23,7 @@ namespace AuthServer.Identity.Application.Features.Management.Sessions.Commands.
             var token = await _context.RefreshTokens.Include(x => x.User).FirstOrDefaultAsync(x => x.Id == request.TokenId, cancellationToken);
 
             if (token == null) return new ServiceResponse<bool>("Oturum bulunamadı.");
-            if (token.RevokedDate != null) return new ServiceResponse<bool>("Bu oturum zaten sonlandırılmış.");
+            if (token.RevokedDate != null) return new ServiceResponse<bool>(true, "Bu oturum zaten sonlandırılmış.");
 
             // Token'ı iptal et
             token.RevokedDate = DateTime.UtcNow;
