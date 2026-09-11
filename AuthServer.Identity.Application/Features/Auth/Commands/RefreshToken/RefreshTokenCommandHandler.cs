@@ -43,7 +43,7 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.RefreshToken
             if (incomingToken.RevokedDate != null)
             {
                 // Saldırganı engellemek için bu zincire ait (bu kullanıcının) TÜM tokenlarını iptal et.
-                await RevokeDescendantRefreshTokens(incomingToken, incomingToken.User, "Attempted reuse of revoked token", cancellationToken);
+                await RevokeAllUserSessionsAsync(incomingToken.User, "Attempted reuse of revoked token", cancellationToken);
 
                 await _context.SaveChangesAsync(cancellationToken);
 
@@ -63,7 +63,7 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.RefreshToken
 
             // 4. Yeni Tokenları Üret (ROTATION BAŞLIYOR)
             var user = incomingToken.User;
-            if (!user.IsActive || await _userManager.IsLockedOutAsync(user))
+            if (!user.IsActive || user.TwoFactorEnabled || await _userManager.IsLockedOutAsync(user))
                 return new ServiceResponse<TokenDto>("Oturum yenilenemedi.");
             var roles = await _userManager.GetRolesAsync(user);
             var sessionId = Guid.NewGuid();
@@ -104,8 +104,8 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.RefreshToken
             return new ServiceResponse<TokenDto>(newTokenDto, "Token başarıyla yenilendi.");
         }
 
-        // Yardımcı Metod: Bir hırsızlık durumunda kullanıcının tüm soy ağacını kurutur.
-        private async Task RevokeDescendantRefreshTokens(Domain.Entities.RefreshToken refreshToken, AppUser user, string reason, CancellationToken cancellationToken)
+        // Replay policy deliberately revokes every login for this user, not only this replacement chain.
+        private async Task RevokeAllUserSessionsAsync(AppUser user, string reason, CancellationToken cancellationToken)
         {
             // O kullanıcının henüz revoke edilmemiş tüm tokenlarını bul
             var activeTokens = await _context.RefreshTokens

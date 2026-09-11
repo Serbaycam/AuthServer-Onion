@@ -22,7 +22,7 @@ public class UserStatusMiddleware(RequestDelegate next)
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         var user = userId == null ? null : await users.FindByIdAsync(userId);
         var now = DateTime.UtcNow;
-        if (user == null || !user.IsActive || await users.IsLockedOutAsync(user) ||
+        if (user == null || !user.IsActive || user.TwoFactorEnabled || await users.IsLockedOutAsync(user) ||
             context.User.FindFirstValue("security_stamp") != user.SecurityStamp ||
             !Guid.TryParse(context.User.FindFirstValue("sid"), out var sessionId) ||
             !await db.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == sessionId &&

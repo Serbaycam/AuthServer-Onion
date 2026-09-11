@@ -30,15 +30,9 @@ namespace AuthServer.Identity.Application.Features.Auth.Commands.Revoke
                 return new ServiceResponse<bool>(true, "Oturum kapatıldı.");
             }
 
-            // Zaten iptal edilmişse işlem yapma
-            if (!refreshToken.IsActive)
-            {
-                return new ServiceResponse<bool>(true, "Oturum kapatıldı.");
-            }
-
-            // Token'ı iptal et (Revoke)
-            refreshToken.RevokedDate = DateTime.UtcNow;
-            refreshToken.RevokedByIp = _currentUserService.IpAddress;
+            var revoked = await RefreshTokenRevocation.RevokeChainAsync(_context, refreshToken,
+                "Client logout", _currentUserService.IpAddress, cancellationToken);
+            if (revoked.Count == 0) return new ServiceResponse<bool>(true, "Oturum kapatıldı.");
 
             await _context.SaveChangesAsync(cancellationToken);
 
