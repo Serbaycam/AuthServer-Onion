@@ -34,6 +34,9 @@ jobs:
       - run: dotnet test AuthServer.Identity.Tests/AuthServer.Identity.Tests.csproj --configuration Release
       - run: npm ci
         working-directory: AuthServer-AdminPanel
+      - name: Check dependency advisories
+        working-directory: AuthServer-AdminPanel
+        run: npm audit --audit-level=low
       - run: npm run build
         working-directory: AuthServer-AdminPanel
       - run: npm run lint

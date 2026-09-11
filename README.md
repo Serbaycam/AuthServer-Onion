@@ -78,4 +78,4 @@ export AUTH_TEST_DATABASE='Host=localhost;Database=authserver_tests;Username=tes
 dotnet test AuthServer.Identity.Tests/AuthServer.Identity.Tests.csproj
 ```
 
-GitHub Actions PostgreSQL üzerinde migration ve güvenlik entegrasyon testlerini, panel TypeScript/build/lint, oturum ve arayüz regresyon testlerini çalıştırır. Ayrıntılı inceleme ve sınırlar: [docs/REFACTORING.md](docs/REFACTORING.md).
+GitHub Actions PostgreSQL üzerinde migration ve güvenlik entegrasyon testlerini, panel TypeScript/build/lint, oturum ve arayüz regresyon testlerini çalıştırır. Ayrıntılı inceleme ve sınırlar: [ilk refactoring](docs/REFACTORING.md), [panel oturumu](docs/ADMIN_PANEL.md), [refresh/oturum kapatma analizi](docs/REFRESH_SESSION_ANALYSIS.md).
