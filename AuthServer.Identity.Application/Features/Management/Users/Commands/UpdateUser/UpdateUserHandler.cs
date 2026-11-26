@@ -23,6 +23,7 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Upd
         {
             var user = await _userManager.FindByIdAsync(request.UserId.ToString());
             if (user == null) return new ServiceResponse<bool>("Kullanıcı bulunamadı.");
+            var before = new { firstName = user.FirstName, lastName = user.LastName, email = user.Email };
 
             // 1. E-Posta Değişikliği ve Çakışma Kontrolü
             if (request.Email != user.Email)
@@ -58,8 +59,8 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Upd
                 "UpdateUserInfo",
                 "AppUser",
                 user.Id.ToString(),
-                new { UpdatedEmail = user.Email, user.FirstName, user.LastName },
-                _currentUserService.IpAddress ?? "Unknown"
+                new { before, after = new { firstName = user.FirstName, lastName = user.LastName, email = user.Email } },
+                _currentUserService.IpAddress ?? "Unknown", cancellationToken
             );
 
             return new ServiceResponse<bool>(true, "Kullanıcı bilgileri güncellendi.");

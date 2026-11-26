@@ -1,10 +1,11 @@
 using AuthServer.Identity.Application.Wrappers;
+using AuthServer.Identity.Application.Interfaces;
 using MediatR;
 using System.Text.Json.Serialization;
 
 namespace AuthServer.Identity.Application.Features.Management.Users.Commands.UpdateUser
 {
-    public class UpdateUserCommand : IRequest<ServiceResponse<bool>>
+    public class UpdateUserCommand : IRequest<ServiceResponse<bool>>, IManagementCommand
     {
         public Guid UserId { get; set; } // Hangi kullanıcı?
         [System.ComponentModel.DataAnnotations.Required]

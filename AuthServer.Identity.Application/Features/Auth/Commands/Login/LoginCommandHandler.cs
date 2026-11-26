@@ -6,71 +6,44 @@ using AuthServer.Identity.Domain.Entities;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 
-namespace AuthServer.Identity.Application.Features.Auth.Commands.Login
+namespace AuthServer.Identity.Application.Features.Auth.Commands.Login;
+
+public sealed class LoginCommandHandler(UserManager<AppUser> users, SignInManager<AppUser> signIn,
+    ITokenService tokens, IApplicationDbContext db, IAuditService audit, ICurrentUserService actor,
+    IUserSessionState sessionState) : IRequestHandler<LoginCommand, ServiceResponse<TokenDto>>
 {
-    public class LoginCommandHandler : IRequestHandler<LoginCommand, ServiceResponse<TokenDto>>
+    public async Task<ServiceResponse<TokenDto>> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
-        private readonly UserManager<AppUser> _userManager;
-        private readonly SignInManager<AppUser> _signInManager;
-        private readonly ITokenService _tokenService;
-        private readonly IApplicationDbContext _context;
-        private readonly IAuditService _auditService;
-        private readonly ICurrentUserService _currentUserService;
+        var user = await users.FindByEmailAsync(request.Email.Trim());
+        if (user == null || !user.IsActive || user.TwoFactorEnabled)
+            return Denied();
+        // Persist failed-password counters outside the issuance transaction.
+        if (!(await signIn.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true)).Succeeded)
+            return Denied();
+        var verifiedStamp = user.SecurityStamp;
+        await using var transaction = await sessionState.LockAsync([user.Id], cancellationToken);
+        user = transaction.FindUser(user.Id);
+        if (user == null || !user.IsActive || user.TwoFactorEnabled || await users.IsLockedOutAsync(user) ||
+            string.IsNullOrEmpty(verifiedStamp) || user.SecurityStamp != verifiedStamp)
+            return Denied();
 
-        public LoginCommandHandler(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager, ITokenService tokenService, IApplicationDbContext context, IAuditService auditService, ICurrentUserService currentUserService)
+        var now = DateTime.UtcNow;
+        var sid = Guid.NewGuid();
+        var deadline = tokens.GetAbsoluteSessionExpiration(now);
+        var roles = await users.GetRolesAsync(user);
+        var token = await tokens.CreateTokenAsync(user, roles, sid, deadline);
+        db.RefreshTokens.Add(new AuthServer.Identity.Domain.Entities.RefreshToken
         {
-            _userManager = userManager;
-            _signInManager = signInManager;
-            _tokenService = tokenService;
-            _context = context;
-            _auditService = auditService;
-            _currentUserService = currentUserService;
-        }
-
-        public async Task<ServiceResponse<TokenDto>> Handle(LoginCommand request, CancellationToken cancellationToken)
-        {
-            var user = await _userManager.FindByEmailAsync(request.Email);
-            if (user == null) return new ServiceResponse<TokenDto>("Email veya şifre hatalı.");
-
-            // Kullanıcı Pasif ise Girişi Engelle (Bunu da ekleyelim tam olsun)
-            if (!user.IsActive || user.TwoFactorEnabled) return new ServiceResponse<TokenDto>("Email veya şifre hatalı.");
-
-            var signInResult = await _signInManager.CheckPasswordSignInAsync(user, request.Password, true);
-            if (!signInResult.Succeeded) return new ServiceResponse<TokenDto>("Email veya şifre hatalı.");
-
-            var roles = await _userManager.GetRolesAsync(user);
-
-            // 1. Token Üret
-            var sessionId = Guid.NewGuid();
-            var tokenDto = await _tokenService.CreateTokenAsync(user, roles, sessionId);
-
-            // 2. Refresh Token Nesnesini Hazırla
-            var refreshTokenEntity = new Domain.Entities.RefreshToken
-            {
-                Id = sessionId,
-                Token = RefreshTokenHash.Compute(tokenDto.RefreshToken),
-                Expires = tokenDto.RefreshTokenExpiration,
-                CreatedByIp = _currentUserService.IpAddress,
-                CreatedDate = DateTime.UtcNow,
-                UserId = user.Id
-            };
-
-            // 3. Veritabanına Kaydet
-            _context.RefreshTokens.Add(refreshTokenEntity);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            // --- 4. AUDIT LOG EKLEME (BURASI YENİ) ---
-            await _auditService.LogAsync(
-                user.Id.ToString(),       // İşlemi yapan (Login olan kişi)
-                "Login",                  // Aksiyon Adı
-                "AppUser",                // Etkilenen Tablo
-                user.Id.ToString(),       // Kayıt ID
-                new { Email = user.Email, Roles = roles }, // Detay
-                _currentUserService.IpAddress // IP Adresi
-            );
-            // -----------------------------------------
-
-            return new ServiceResponse<TokenDto>(tokenDto, "Giriş başarılı.");
-        }
+            Id = sid, UserId = user.Id, Token = RefreshTokenHash.Compute(token.RefreshToken),
+            CreatedDate = now, CreatedByIp = actor.IpAddress ?? "Unknown", Expires = token.RefreshTokenExpiration,
+            SecurityStamp = verifiedStamp, FamilyId = sid, FamilyCreatedAt = now, AbsoluteExpiresAt = deadline
+        });
+        // AuditService flushes both staged rows; the user lock is held until this transaction commits.
+        await audit.LogAsync(user.Id.ToString(), "Login", "AppUser", user.Id.ToString(),
+            new { Email = user.Email, Roles = roles }, actor.IpAddress ?? "Unknown", cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new ServiceResponse<TokenDto>(token, "Giriş başarılı.");
     }
+
+    private static ServiceResponse<TokenDto> Denied() => new("Email veya şifre hatalı.");
 }

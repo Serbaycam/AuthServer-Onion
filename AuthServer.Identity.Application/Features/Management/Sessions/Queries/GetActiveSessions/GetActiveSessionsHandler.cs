@@ -19,7 +19,8 @@ namespace AuthServer.Identity.Application.Features.Management.Sessions.Queries.G
         {
             var activeSessions = await _context.RefreshTokens
                 .Include(x => x.User)
-                .Where(x => x.RevokedDate == null && x.Expires > DateTime.UtcNow)
+                .Where(x => x.RevokedDate == null && x.Expires > DateTime.UtcNow &&
+                    x.AbsoluteExpiresAt > DateTime.UtcNow && x.SecurityStamp == x.User.SecurityStamp)
                 .OrderByDescending(x => x.CreatedDate)
                 .Select(x => new ActiveSessionDto
                 {

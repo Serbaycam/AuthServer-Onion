@@ -26,7 +26,8 @@ public class UserStatusMiddleware(RequestDelegate next)
             context.User.FindFirstValue("security_stamp") != user.SecurityStamp ||
             !Guid.TryParse(context.User.FindFirstValue("sid"), out var sessionId) ||
             !await db.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == sessionId &&
-                t.UserId == user.Id && t.RevokedDate == null && t.Expires > now, context.RequestAborted))
+                t.UserId == user.Id && t.RevokedDate == null && t.Expires > now &&
+                t.AbsoluteExpiresAt > now && t.SecurityStamp == user.SecurityStamp, context.RequestAborted))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsJsonAsync(new { succeeded = false, message = "Oturum geçersiz veya sonlandırılmış." });

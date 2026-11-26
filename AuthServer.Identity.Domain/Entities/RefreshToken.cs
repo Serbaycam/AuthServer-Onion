@@ -1,4 +1,4 @@
-﻿using AuthServer.Identity.Domain.Common;
+using AuthServer.Identity.Domain.Common;
 
 namespace AuthServer.Identity.Domain.Entities
 {
@@ -6,7 +6,11 @@ namespace AuthServer.Identity.Domain.Entities
     {
         public string Token { get; set; }
         public DateTime Expires { get; set; }
-        public bool IsExpired => DateTime.UtcNow >= Expires;
+        public string SecurityStamp { get; set; } = string.Empty;
+        public Guid FamilyId { get; set; }
+        public DateTime FamilyCreatedAt { get; set; }
+        public DateTime AbsoluteExpiresAt { get; set; }
+        public bool IsExpired => DateTime.UtcNow >= Expires || DateTime.UtcNow >= AbsoluteExpiresAt;
 
         public string CreatedByIp { get; set; }
 

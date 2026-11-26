@@ -1,4 +1,4 @@
-﻿namespace AuthServer.Identity.Infrastructure.Settings
+namespace AuthServer.Identity.Infrastructure.Settings
 {
     public class JwtSettings
     {
@@ -7,5 +7,6 @@
         public string Audience { get; set; }
         public double AccessTokenExpirationMinutes { get; set; }
         public double RefreshTokenExpirationDays { get; set; }
+        public int AbsoluteSessionLifetimeDays { get; set; } = 30;
     }
 }

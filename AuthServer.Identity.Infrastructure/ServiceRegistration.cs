@@ -20,6 +20,8 @@ namespace AuthServer.Identity.Infrastructure
                 .Validate(settings => settings.AccessTokenExpirationMinutes > 0 && settings.AccessTokenExpirationMinutes <= 60 &&
                     settings.RefreshTokenExpirationDays > 0 && settings.RefreshTokenExpirationDays <= 90,
                     "Access token lifetime must be 1–60 minutes and refresh lifetime 1–90 days.")
+                .Validate(settings => settings.AbsoluteSessionLifetimeDays is >= 1 and <= 90,
+                    "Absolute session lifetime must be 1–90 days.")
                 .ValidateOnStart();
 
             // Interface ve Implementation'ı eşleştiriyoruz

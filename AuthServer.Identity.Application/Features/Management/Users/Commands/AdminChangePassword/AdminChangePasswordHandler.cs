@@ -3,7 +3,6 @@ using AuthServer.Identity.Application.Wrappers;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 
 namespace AuthServer.Identity.Application.Features.Management.Users.Commands.AdminChangePassword
 {
@@ -13,18 +12,22 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Adm
         private readonly IApplicationDbContext _context;
         private readonly IAuditService _auditService;
         private readonly ICurrentUserService _currentUserService;
+        private readonly IUserSessionState _sessionState;
 
-        public AdminChangePasswordHandler(UserManager<AppUser> userManager, IApplicationDbContext context, IAuditService auditService, ICurrentUserService currentUserService)
+        public AdminChangePasswordHandler(UserManager<AppUser> userManager, IApplicationDbContext context,
+            IAuditService auditService, ICurrentUserService currentUserService, IUserSessionState sessionState)
         {
             _userManager = userManager;
             _context = context;
             _auditService = auditService;
             _currentUserService = currentUserService;
+            _sessionState = sessionState;
         }
 
         public async Task<ServiceResponse<bool>> Handle(AdminChangePasswordCommand request, CancellationToken cancellationToken)
         {
-            var user = await _userManager.FindByIdAsync(request.UserId.ToString());
+            await using var session = await _sessionState.LockAsync([request.UserId], cancellationToken);
+            var user = session.FindUser(request.UserId);
             if (user == null) return new ServiceResponse<bool>("Kullanıcı bulunamadı.");
 
             // 1. Şifreyi Sıfırla (Token üretip resetleme yöntemi en temizidir)
@@ -39,17 +42,9 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Adm
                 return response;
             }
 
-            // 2. GÜVENLİK: Şifre değiştiği için TÜM açık oturumları (Refresh Token) iptal et.
-            var activeTokens = await _context.RefreshTokens
-                .Where(t => t.UserId == user.Id && t.RevokedDate == null)
-                .ToListAsync(cancellationToken);
-
-            foreach (var t in activeTokens)
-            {
-                t.RevokedDate = DateTime.UtcNow;
-                t.ReasonRevoked = "Password changed by Admin";
-                t.RevokedByIp = _currentUserService.IpAddress;
-            }
+            // ResetPasswordAsync already rotated the stamp. Serialize revocation with session issuance.
+            var revoked = await _sessionState.RevokeAllAsync(user, "Password changed by Admin",
+                _currentUserService.IpAddress, cancellationToken, rotateSecurityStamp: false);
             await _context.SaveChangesAsync(cancellationToken);
 
             // 3. Audit Log
@@ -58,9 +53,10 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Adm
                 "AdminChangePassword",
                 "AppUser",
                 user.Id.ToString(),
-                new { user.Email, Action = "Force Password Reset" },
-                _currentUserService.IpAddress ?? "Unknown"
+                new { passwordChanged = true, sessionsInvalidated = true, revokedSessionIds = revoked },
+                _currentUserService.IpAddress ?? "Unknown", cancellationToken
             );
+            await session.CommitAsync(cancellationToken);
 
             return new ServiceResponse<bool>(true, "Şifre başarıyla değiştirildi ve eski oturumlar kapatıldı.");
         }

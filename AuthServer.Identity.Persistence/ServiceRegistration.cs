@@ -24,6 +24,7 @@ namespace AuthServer.Identity.Persistence
             // --- EKLENECEK SATIR ---
             // Biri IApplicationDbContext isterse, ona yukarıda oluşturduğun AppDbContext'i ver.
             services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<AppDbContext>());
+            services.AddScoped<IUserSessionState, UserSessionState>();
             // -----------------------
 
             // Identity Ayarları

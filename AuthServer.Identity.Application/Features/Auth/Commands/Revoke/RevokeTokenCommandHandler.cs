@@ -1,42 +1,26 @@
-using AuthServer.Identity.Application.Security;
 using AuthServer.Identity.Application.Interfaces;
+using AuthServer.Identity.Application.Security;
 using AuthServer.Identity.Application.Wrappers;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace AuthServer.Identity.Application.Features.Auth.Commands.Revoke
+namespace AuthServer.Identity.Application.Features.Auth.Commands.Revoke;
+
+public sealed class RevokeTokenCommandHandler(IApplicationDbContext db, ICurrentUserService actor,
+    IUserSessionState sessionState) : IRequestHandler<RevokeTokenCommand, ServiceResponse<bool>>
 {
-    public class RevokeTokenCommandHandler : IRequestHandler<RevokeTokenCommand, ServiceResponse<bool>>
+    public async Task<ServiceResponse<bool>> Handle(RevokeTokenCommand request, CancellationToken cancellationToken)
     {
-        private readonly IApplicationDbContext _context;
-        private readonly ICurrentUserService _currentUserService;
-
-        public RevokeTokenCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
-        {
-            _context = context;
-            _currentUserService = currentUserService;
-        }
-
-        public async Task<ServiceResponse<bool>> Handle(RevokeTokenCommand request, CancellationToken cancellationToken)
-        {
-            var tokenHash = RefreshTokenHash.Compute(request.Token);
-            var refreshToken = await _context.RefreshTokens
-                .SingleOrDefaultAsync(t => t.Token == tokenHash, cancellationToken);
-
-            // Eğer token yoksa hata dönmeyelim, zaten amaç token'ın çalışmaması. 
-            // "Idempotent" (tekrar tekrar çalıştırılabilir) olması iyidir.
-            if (refreshToken == null)
-            {
-                return new ServiceResponse<bool>(true, "Oturum kapatıldı.");
-            }
-
-            var revoked = await RefreshTokenRevocation.RevokeChainAsync(_context, refreshToken,
-                "Client logout", _currentUserService.IpAddress, cancellationToken);
-            if (revoked.Count == 0) return new ServiceResponse<bool>(true, "Oturum kapatıldı.");
-
-            await _context.SaveChangesAsync(cancellationToken);
-
-            return new ServiceResponse<bool>(true, "Token başarıyla iptal edildi.");
-        }
+        var hash = RefreshTokenHash.Compute(request.Token);
+        var ownerId = await db.RefreshTokens.AsNoTracking().Where(session => session.Token == hash)
+            .Select(session => (Guid?)session.UserId).SingleOrDefaultAsync(cancellationToken);
+        if (ownerId == null) return new ServiceResponse<bool>(true, "Oturum kapatıldı.");
+        await using var transaction = await sessionState.LockAsync([ownerId.Value], cancellationToken);
+        var token = await db.RefreshTokens.SingleOrDefaultAsync(session => session.Token == hash, cancellationToken);
+        if (token == null) return new ServiceResponse<bool>(true, "Oturum kapatıldı.");
+        await RefreshTokenRevocation.RevokeChainAsync(db, token, "Client logout", actor.IpAddress, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new ServiceResponse<bool>(true, "Oturum kapatıldı.");
     }
 }
