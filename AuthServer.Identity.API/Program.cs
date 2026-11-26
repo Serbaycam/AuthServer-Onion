@@ -130,11 +130,12 @@ if (builder.Configuration.GetValue<bool>("Database:Initialize"))
 {
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
-    await services.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+    var db = services.GetRequiredService<AppDbContext>();
+    // Complete schema migration before opening the atomic role/admin seed transaction.
+    await db.Database.MigrateAsync(app.Lifetime.ApplicationStopping);
     var users = services.GetRequiredService<UserManager<AppUser>>();
     var roles = services.GetRequiredService<RoleManager<AppRole>>();
-    await ContextSeed.SeedRolesAsync(users, roles);
-    await ContextSeed.SeedSuperAdminAsync(users, roles, builder.Configuration);
+    await ContextSeed.SeedAsync(db, users, roles, builder.Configuration, app.Lifetime.ApplicationStopping);
 }
 app.Run();
 

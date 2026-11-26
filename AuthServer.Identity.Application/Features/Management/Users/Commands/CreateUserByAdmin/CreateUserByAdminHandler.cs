@@ -67,8 +67,17 @@ namespace AuthServer.Identity.Application.Features.Management.Users.Commands.Cre
                 "CreateUserByAdmin",
                 "AppUser",
                 user.Id.ToString(),
-                new { user.Email, AssignedRoles = request.Roles },
-                _currentUserService.IpAddress ?? "Unknown"
+                new
+                {
+                    before = (object?)null,
+                    after = new
+                    {
+                        firstName = user.FirstName, lastName = user.LastName, email = user.Email,
+                        isActive = user.IsActive,
+                        roles = (await _userManager.GetRolesAsync(user)).OrderBy(role => role, StringComparer.Ordinal).ToArray()
+                    }
+                },
+                _currentUserService.IpAddress ?? "Unknown", cancellationToken
             );
 
             return new ServiceResponse<Guid>(user.Id, "Kullanıcı başarıyla oluşturuldu.");

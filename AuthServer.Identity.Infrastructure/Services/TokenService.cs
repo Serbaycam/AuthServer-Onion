@@ -9,72 +9,44 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace AuthServer.Identity.Infrastructure.Services
+namespace AuthServer.Identity.Infrastructure.Services;
+
+public sealed class TokenService(IOptions<JwtSettings> options) : ITokenService
 {
-    public class TokenService : ITokenService
+    private readonly JwtSettings settings = options.Value;
+
+    public DateTime GetAbsoluteSessionExpiration(DateTime createdAt)
+        => createdAt.AddDays(settings.AbsoluteSessionLifetimeDays);
+
+    public Task<TokenDto> CreateTokenAsync(AppUser user, IList<string> roles, Guid sessionId,
+        DateTime? absoluteExpiration = null)
     {
-        private readonly JwtSettings _jwtSettings;
-
-        public TokenService(IOptions<JwtSettings> jwtSettings)
+        var now = DateTime.UtcNow;
+        var deadline = absoluteExpiration ?? GetAbsoluteSessionExpiration(now);
+        var accessExpiration = Min(now.AddMinutes(settings.AccessTokenExpirationMinutes), deadline);
+        var refreshExpiration = Min(now.AddDays(settings.RefreshTokenExpirationDays), deadline);
+        var claims = new List<Claim>
         {
-            _jwtSettings = jwtSettings.Value;
-        }
-
-        public Task<TokenDto> CreateTokenAsync(AppUser user, IList<string> roles, Guid sessionId)
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Email, user.Email ?? ""),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new("sid", sessionId.ToString()),
+            new("security_stamp", user.SecurityStamp ?? ""),
+            new("fullName", user.FullName)
+        };
+        claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.Secret));
+        var token = new JwtSecurityToken(settings.Issuer, settings.Audience, claims,
+            expires: accessExpiration, signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
+        return Task.FromResult(new TokenDto
         {
-            // 1. Claim'leri Hazırla (Kimlik bilgileri)
-            var claims = new List<Claim>
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-                new Claim(JwtRegisteredClaimNames.Email, user.Email),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()), // Token ID
-                new Claim("sid", sessionId.ToString()),
-                new Claim("security_stamp", user.SecurityStamp ?? ""),
-                new Claim("fullName", user.FullName ?? "")
-            };
-
-            // Rolleri ekle
-            foreach (var role in roles)
-            {
-                claims.Add(new Claim(ClaimTypes.Role, role));
-            }
-
-            // 2. Anahtarı Hazırla
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-            // 3. Süreyi Belirle
-            var accessMins = _jwtSettings.AccessTokenExpirationMinutes > 0 ? _jwtSettings.AccessTokenExpirationMinutes : 15;
-            var expiration = DateTime.UtcNow.AddMinutes(accessMins);
-
-            // 4. Token'ı Oluştur
-            var token = new JwtSecurityToken(
-                issuer: _jwtSettings.Issuer,
-                audience: _jwtSettings.Audience,
-                claims: claims,
-                expires: expiration,
-                signingCredentials: creds
-            );
-
-            // 5. Refresh Token Üret
-            var refreshToken = GenerateRefreshToken();
-
-            return Task.FromResult(new TokenDto
-            {
-                AccessToken = new JwtSecurityTokenHandler().WriteToken(token),
-                AccessTokenExpiration = expiration,
-                RefreshToken = refreshToken,
-                RefreshTokenExpiration = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpirationDays > 0 ? _jwtSettings.RefreshTokenExpirationDays : 7)
-            });
-        }
-
-        public string GenerateRefreshToken()
-        {
-            var randomNumber = new byte[32];
-            using var rng = RandomNumberGenerator.Create();
-            rng.GetBytes(randomNumber);
-            return Convert.ToBase64String(randomNumber);
-        }
-
+            AccessToken = new JwtSecurityTokenHandler().WriteToken(token),
+            AccessTokenExpiration = accessExpiration,
+            RefreshToken = GenerateRefreshToken(),
+            RefreshTokenExpiration = refreshExpiration
+        });
     }
+
+    public string GenerateRefreshToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+    private static DateTime Min(DateTime left, DateTime right) => left <= right ? left : right;
 }

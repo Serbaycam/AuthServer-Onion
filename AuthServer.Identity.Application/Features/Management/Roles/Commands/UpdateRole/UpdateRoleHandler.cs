@@ -1,4 +1,5 @@
 using AuthServer.Identity.Application.Wrappers;
+using AuthServer.Identity.Application.Interfaces;
 using AuthServer.Identity.Domain.Entities;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
@@ -8,7 +9,14 @@ namespace AuthServer.Identity.Application.Features.Management.Roles.Commands.Upd
     public class UpdateRoleHandler : IRequestHandler<UpdateRoleCommand, ServiceResponse<bool>>
     {
         private readonly RoleManager<AppRole> _roleManager;
-        public UpdateRoleHandler(RoleManager<AppRole> roleManager) => _roleManager = roleManager;
+        private readonly IAuditService _auditService;
+        private readonly ICurrentUserService _currentUserService;
+        public UpdateRoleHandler(RoleManager<AppRole> roleManager, IAuditService auditService, ICurrentUserService currentUserService)
+        {
+            _roleManager = roleManager;
+            _auditService = auditService;
+            _currentUserService = currentUserService;
+        }
 
         public async Task<ServiceResponse<bool>> Handle(UpdateRoleCommand request, CancellationToken cancellationToken)
         {
@@ -16,9 +24,14 @@ namespace AuthServer.Identity.Application.Features.Management.Roles.Commands.Upd
             if (role == null) return new ServiceResponse<bool>("Rol bulunamadı.");
 
             if (role.Name is "SuperAdmin" or "Basic") return new ServiceResponse<bool>("Sistem rolünün adı değiştirilemez.");
+            var before = new { name = role.Name };
             role.Name = request.NewRoleName;
             var result = await _roleManager.UpdateAsync(role);
             if (!result.Succeeded) return new ServiceResponse<bool>("Rol güncellenemedi.") { Errors = result.Errors.Select(e => e.Description).ToList() };
+
+            await _auditService.LogAsync(_currentUserService.UserId ?? "System", "UpdateRoleCommand", "AppRole",
+                role.Id.ToString(), new { before, after = new { name = role.Name } },
+                _currentUserService.IpAddress ?? "Unknown", cancellationToken);
 
             return new ServiceResponse<bool>(true, "Rol güncellendi.");
         }

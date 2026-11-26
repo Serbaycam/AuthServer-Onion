@@ -29,7 +29,8 @@ namespace AuthServer.Identity.Application.Features.Management.Dashboard.Queries
             var activeUsers = await _userManager.Users.CountAsync(u => u.IsActive, cancellationToken);
 
             var activeSessions = await _context.RefreshTokens
-                .CountAsync(x => x.RevokedDate == null && x.Expires > DateTime.UtcNow, cancellationToken);
+                .CountAsync(x => x.RevokedDate == null && x.Expires > DateTime.UtcNow &&
+                    x.AbsoluteExpiresAt > DateTime.UtcNow && x.SecurityStamp == x.User.SecurityStamp, cancellationToken);
 
             // 2. Son Aktiviteleri Çek (Henüz Email yok, sadece UserId var)
             var lastLogs = await _context.AuditLogs

@@ -14,13 +14,20 @@ public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExcep
             logger.LogError(exception, "Request failed. TraceId: {TraceId}", context.TraceIdentifier);
             if (context.Response.HasStarted) throw;
             context.Response.Clear();
-            context.Response.StatusCode = exception is DbUpdateConcurrencyException ||
-                exception is Npgsql.PostgresException { SqlState: "40001" or "40P01" } ||
-                exception.InnerException is Npgsql.PostgresException { SqlState: "40001" or "40P01" } ? 409 : 500;
+            context.Response.StatusCode = IsConcurrencyConflict(exception) ? 409 : 500;
             await context.Response.WriteAsJsonAsync(new ServiceResponse<string>(
                 context.Response.StatusCode == 409
                     ? "Kayıt başka bir işlem tarafından değiştirildi. Tekrar deneyin."
                     : $"İşlem tamamlanamadı. Referans: {context.TraceIdentifier}"));
         }
+    }
+
+    private static bool IsConcurrencyConflict(Exception exception)
+    {
+        // Npgsql can wrap PostgresException in DbUpdateException and an execution-strategy exception.
+        for (Exception? current = exception; current != null; current = current.InnerException)
+            if (current is DbUpdateConcurrencyException ||
+                current is Npgsql.PostgresException { SqlState: "40001" or "40P01" }) return true;
+        return false;
     }
 }

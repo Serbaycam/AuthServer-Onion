@@ -35,7 +35,9 @@ namespace AuthServer.Identity.Application.Features.Management.Roles.Commands.Upd
 
             // 2. Mevcut tüm "permission" claimlerini temizle
             var existingClaims = await _roleManager.GetClaimsAsync(role);
-            var permissionClaims = existingClaims.Where(c => c.Type == "permission");
+            var permissionClaims = existingClaims.Where(c => c.Type == "permission").ToArray();
+            var before = new { permissions = permissionClaims.Select(claim => claim.Value).Distinct()
+                .OrderBy(permission => permission, StringComparer.Ordinal).ToArray() };
 
             foreach (var claim in permissionClaims)
             {
@@ -55,8 +57,9 @@ namespace AuthServer.Identity.Application.Features.Management.Roles.Commands.Upd
                 "UpdateRolePermissions",
                 "AppRole",
                 role.Id.ToString(),
-                new { NewPermissions = request.Permissions },
-                _currentUserService.IpAddress ?? "127.0.0.1" // request üzerinden alıyoruz
+                new { before, after = new { permissions = request.Permissions.Distinct()
+                    .OrderBy(permission => permission, StringComparer.Ordinal).ToArray() } },
+                _currentUserService.IpAddress ?? "Unknown", cancellationToken
             );
             return new ServiceResponse<bool>(true, $"{role.Name} rolüne ait yetkiler başarıyla güncellendi.");
         }

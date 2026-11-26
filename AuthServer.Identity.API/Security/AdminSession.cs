@@ -33,7 +33,8 @@ public sealed class AdminSessionEvents(IApplicationDbContext db, UserManager<App
             principal?.FindFirstValue("security_stamp") != user.SecurityStamp ||
             !Guid.TryParse(principal?.FindFirstValue("sid"), out var sid) ||
             !await db.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == sid && t.UserId == user.Id &&
-                t.RevokedDate == null && t.Expires > DateTime.UtcNow, context.HttpContext.RequestAborted))
+                t.RevokedDate == null && t.Expires > DateTime.UtcNow &&
+                t.AbsoluteExpiresAt > DateTime.UtcNow && t.SecurityStamp == user.SecurityStamp, context.HttpContext.RequestAborted))
         {
             context.RejectPrincipal();
             await context.HttpContext.SignOutAsync(AdminSession.Scheme);

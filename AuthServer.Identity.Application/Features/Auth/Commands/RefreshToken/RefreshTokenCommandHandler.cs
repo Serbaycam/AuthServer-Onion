@@ -7,115 +7,65 @@ using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
-namespace AuthServer.Identity.Application.Features.Auth.Commands.RefreshToken
+namespace AuthServer.Identity.Application.Features.Auth.Commands.RefreshToken;
+
+public sealed class RefreshTokenCommandHandler(ITokenService tokens, IApplicationDbContext db,
+    UserManager<AppUser> users, ICurrentUserService actor, IUserSessionState sessionState)
+    : IRequestHandler<RefreshTokenCommand, ServiceResponse<TokenDto>>
 {
-    public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, ServiceResponse<TokenDto>>
+    public async Task<ServiceResponse<TokenDto>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
     {
-        private readonly ITokenService _tokenService;
-        private readonly IApplicationDbContext _context;
-        private readonly UserManager<AppUser> _userManager;
-        private readonly ICurrentUserService _currentUserService;
+        if (string.IsNullOrWhiteSpace(request.RefreshToken)) return Denied("Geçersiz token.");
+        var hash = RefreshTokenHash.Compute(request.RefreshToken);
+        var ownerId = await db.RefreshTokens.AsNoTracking().Where(session => session.Token == hash)
+            .Select(session => (Guid?)session.UserId).SingleOrDefaultAsync(cancellationToken);
+        if (ownerId == null) return Denied("Geçersiz token.");
+        await using var transaction = await sessionState.LockAsync([ownerId.Value], cancellationToken);
+        var user = transaction.FindUser(ownerId.Value);
+        var incoming = await db.RefreshTokens.SingleOrDefaultAsync(session => session.Token == hash, cancellationToken);
+        if (user == null || incoming == null) return Denied("Geçersiz token.");
 
-        public RefreshTokenCommandHandler(ITokenService tokenService, IApplicationDbContext context, UserManager<AppUser> userManager, ICurrentUserService currentUserService)
+        // Preserve user-wide replay policy; the epoch also covers concurrent, previously invisible sessions.
+        if (incoming.RevokedDate != null)
         {
-            _tokenService = tokenService;
-            _context = context;
-            _userManager = userManager;
-            _currentUserService = currentUserService;
+            await sessionState.RevokeAllAsync(user, "Attempted reuse of revoked token", actor.IpAddress, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Denied("Güvenlik ihlali: Kullanılmış token tekrar denendi. Tüm oturumlar kapatıldı.");
         }
-
-        public async Task<ServiceResponse<TokenDto>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
+        if (incoming.IsExpired || incoming.FamilyId == Guid.Empty ||
+            string.IsNullOrEmpty(incoming.SecurityStamp) || incoming.SecurityStamp != user.SecurityStamp)
         {
-            if (string.IsNullOrWhiteSpace(request.RefreshToken)) return new ServiceResponse<TokenDto>("Geçersiz token.");
-            var tokenHash = RefreshTokenHash.Compute(request.RefreshToken);
-            // 1. Gelen Refresh Token'ı veritabanında bul
-            var incomingToken = await _context.RefreshTokens
-                .Include(x => x.User)
-                .SingleOrDefaultAsync(x => x.Token == tokenHash, cancellationToken);
-
-            // Token yoksa hata dön
-            if (incomingToken == null)
-                return new ServiceResponse<TokenDto>("Geçersiz token.");
-
-            // 2. REUSE DETECTION (Yeniden Kullanım Tespiti - GÜVENLİK)
-            // Eğer bu token daha önce kullanılmışsa (RevokedDate doluysa), 
-            // demek ki birisi eski bir bileti kullanmaya çalışıyor. Bu bir saldırı olabilir!
-            if (incomingToken.RevokedDate != null)
-            {
-                // Saldırganı engellemek için bu zincire ait (bu kullanıcının) TÜM tokenlarını iptal et.
-                await RevokeAllUserSessionsAsync(incomingToken.User, "Attempted reuse of revoked token", cancellationToken);
-
-                await _context.SaveChangesAsync(cancellationToken);
-
-                return new ServiceResponse<TokenDto>("Güvenlik ihlali: Kullanılmış token tekrar denendi. Tüm oturumlar kapatıldı.");
-            }
-
-            // 3. Standart Kontroller (Süre bitmiş mi?)
-            if (incomingToken.IsExpired)
-            {
-                // Süresi dolmuş ama henüz revoke edilmemişse, revoke et.
-                incomingToken.RevokedDate = DateTime.UtcNow;
-                incomingToken.ReasonRevoked = "Expired";
-
-                await _context.SaveChangesAsync(cancellationToken);
-                return new ServiceResponse<TokenDto>("Oturum süresi dolmuş. Lütfen tekrar giriş yapın.");
-            }
-
-            // 4. Yeni Tokenları Üret (ROTATION BAŞLIYOR)
-            var user = incomingToken.User;
-            if (!user.IsActive || user.TwoFactorEnabled || await _userManager.IsLockedOutAsync(user))
-                return new ServiceResponse<TokenDto>("Oturum yenilenemedi.");
-            var roles = await _userManager.GetRolesAsync(user);
-            var sessionId = Guid.NewGuid();
-            var newTokenDto = await _tokenService.CreateTokenAsync(user, roles, sessionId);
-
-            // 5. ESKİ TOKEN'I İPTAL ET (ÖNEMLİ!)
-            // Artık bu token kullanılamaz, yerine yenisi geçti.
-            incomingToken.RevokedDate = DateTime.UtcNow;
-            incomingToken.RevokedByIp = _currentUserService.IpAddress;
-            incomingToken.ReasonRevoked = "Replaced by new token";
-            incomingToken.ReplacedByToken = RefreshTokenHash.Compute(newTokenDto.RefreshToken); // Zinciri kuruyoruz
-
-            // 6. YENİ TOKEN'I OLUŞTUR
-            var newRefreshTokenEntity = new Domain.Entities.RefreshToken
-            {
-                Id = sessionId,
-                Token = RefreshTokenHash.Compute(newTokenDto.RefreshToken),
-                Expires = newTokenDto.RefreshTokenExpiration,
-                CreatedByIp = _currentUserService.IpAddress,
-                CreatedDate = DateTime.UtcNow,
-                UserId = user.Id
-            };
-
-            // 7. Hepsini Kaydet
-
-            _context.RefreshTokens.Add(newRefreshTokenEntity); // Yeniyi ekle
-
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                // Another request consumed/revoked this credential. Never return the losing tokens.
-                return new ServiceResponse<TokenDto>("Oturum yenilenemedi. Lütfen tekrar giriş yapın.");
-            }
-
-            return new ServiceResponse<TokenDto>(newTokenDto, "Token başarıyla yenilendi.");
+            incoming.RevokedDate = DateTime.UtcNow;
+            incoming.RevokedByIp = actor.IpAddress;
+            incoming.ReasonRevoked = incoming.IsExpired ? "Expired" : "Account security version changed";
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Denied("Oturum süresi veya güvenlik bilgisi değişmiş. Lütfen tekrar giriş yapın.");
         }
-
-        // Replay policy deliberately revokes every login for this user, not only this replacement chain.
-        private async Task RevokeAllUserSessionsAsync(AppUser user, string reason, CancellationToken cancellationToken)
+        if (!user.IsActive || user.TwoFactorEnabled || await users.IsLockedOutAsync(user))
+            return Denied("Oturum yenilenemedi.");
+        var sid = Guid.NewGuid();
+        var token = await tokens.CreateTokenAsync(user, await users.GetRolesAsync(user), sid, incoming.AbsoluteExpiresAt);
+        if (token.RefreshTokenExpiration <= DateTime.UtcNow || token.AccessTokenExpiration <= DateTime.UtcNow)
+            return Denied("Oturum süresi dolmuş. Lütfen tekrar giriş yapın.");
+        incoming.RevokedDate = DateTime.UtcNow;
+        incoming.RevokedByIp = actor.IpAddress;
+        incoming.ReasonRevoked = "Replaced by new token";
+        incoming.ReplacedByToken = RefreshTokenHash.Compute(token.RefreshToken);
+        db.RefreshTokens.Add(new AuthServer.Identity.Domain.Entities.RefreshToken
         {
-            // O kullanıcının henüz revoke edilmemiş tüm tokenlarını bul
-            var activeTokens = await _context.RefreshTokens
-                .Where(t => t.UserId == user.Id && t.RevokedDate == null).ToListAsync(cancellationToken);
-
-            foreach (var token in activeTokens)
-            {
-                token.RevokedDate = DateTime.UtcNow;
-                token.ReasonRevoked = reason;
-            }
-        }
+            Id = sid, UserId = user.Id, Token = RefreshTokenHash.Compute(token.RefreshToken),
+            Expires = token.RefreshTokenExpiration, CreatedDate = DateTime.UtcNow,
+            CreatedByIp = actor.IpAddress ?? "Unknown", SecurityStamp = incoming.SecurityStamp,
+            FamilyId = incoming.FamilyId, FamilyCreatedAt = incoming.FamilyCreatedAt,
+            AbsoluteExpiresAt = incoming.AbsoluteExpiresAt
+        });
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Denied("Oturum yenilenemedi. Lütfen tekrar giriş yapın."); }
+        await transaction.CommitAsync(cancellationToken);
+        return new ServiceResponse<TokenDto>(token, "Token başarıyla yenilendi.");
     }
+
+    private static ServiceResponse<TokenDto> Denied(string message) => new(message);
 }

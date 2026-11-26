@@ -22,7 +22,7 @@ namespace AuthServer.Identity.API.Controllers;
 [AllowAnonymous]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class AdminSessionController(UserManager<AppUser> users, SignInManager<AppUser> signIn,
-    AppDbContext db, IAuditService audit, IAntiforgery antiforgery, IOptions<AdminSessionOptions> options) : ControllerBase
+    AppDbContext db, IAuditService audit, IAntiforgery antiforgery, IOptions<AdminSessionOptions> options, IUserSessionState sessionState) : ControllerBase
 {
     public sealed record LoginRequest(
         [Required, EmailAddress, StringLength(256)] string Email,
@@ -44,6 +44,17 @@ public sealed class AdminSessionController(UserManager<AppUser> users, SignInMan
         if (user == null || !user.IsActive || user.TwoFactorEnabled ||
             !(await signIn.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true)).Succeeded)
             return Unauthorized(new { succeeded = false, message = "E-posta veya şifre hatalı ya da hesap girişe kapalı." });
+        var verifiedStamp = user.SecurityStamp;
+        var userId = user.Id;
+        var previous = await HttpContext.AuthenticateAsync(AdminSession.Scheme);
+        var previousUserId = Guid.TryParse(previous.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedOwner)
+            ? (Guid?)parsedOwner : null;
+        var lockIds = previousUserId.HasValue ? new[] { userId, previousUserId.Value } : new[] { userId };
+        await using var transaction = await sessionState.LockAsync(lockIds, cancellationToken);
+        user = transaction.FindUser(userId);
+        if (user == null || !user.IsActive || user.TwoFactorEnabled || await users.IsLockedOutAsync(user) ||
+            string.IsNullOrEmpty(verifiedStamp) || user.SecurityStamp != verifiedStamp)
+            return Unauthorized(new { succeeded = false, message = "E-posta veya şifre hatalı ya da hesap girişe kapalı." });
         var roles = await users.GetRolesAsync(user);
         if (!roles.Contains("SuperAdmin"))
             return StatusCode(403, new { succeeded = false, message = "Bu panele erişmek için yönetici yetkisi gerekiyor." });
@@ -51,26 +62,29 @@ public sealed class AdminSessionController(UserManager<AppUser> users, SignInMan
         var now = DateTimeOffset.UtcNow;
         var expires = now.AddHours(options.Value.LifetimeHours);
         var sid = Guid.NewGuid();
-        // There is no client-readable refresh secret for browser sessions.
         var session = new RefreshToken
         {
             Id = sid, UserId = user.Id, Token = RefreshTokenHash.Compute(Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))),
             Expires = expires.UtcDateTime, CreatedDate = now.UtcDateTime,
-            CreatedByIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown"
+            CreatedByIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown",
+            SecurityStamp = verifiedStamp, FamilyId = sid, FamilyCreatedAt = now.UtcDateTime,
+            AbsoluteExpiresAt = expires.UtcDateTime
         };
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var previous = await HttpContext.AuthenticateAsync(AdminSession.Scheme);
-        if (Guid.TryParse(previous.Principal?.FindFirstValue("sid"), out var oldId))
+        if (previousUserId.HasValue && Guid.TryParse(previous.Principal?.FindFirstValue("sid"), out var oldId))
         {
-            var old = await db.RefreshTokens.SingleOrDefaultAsync(t => t.Id == oldId, cancellationToken);
-            if (old is { RevokedDate: null }) { old.RevokedDate = now.UtcDateTime; old.ReasonRevoked = "Replaced by browser sign-in"; }
+            var old = await db.RefreshTokens.SingleOrDefaultAsync(t => t.Id == oldId && t.UserId == previousUserId.Value, cancellationToken);
+            if (old is { RevokedDate: null })
+            {
+                old.RevokedDate = now.UtcDateTime;
+                old.RevokedByIp = session.CreatedByIp;
+                old.ReasonRevoked = "Replaced by browser sign-in";
+            }
         }
         db.RefreshTokens.Add(session);
         await db.SaveChangesAsync(cancellationToken);
         await audit.LogAsync(user.Id.ToString(), "AdminPanelLogin", "AppUser", user.Id.ToString(),
-            new { SessionId = sid }, session.CreatedByIp);
+            new { SessionId = sid }, session.CreatedByIp, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-
         var identity = new ClaimsIdentity(AdminSession.Scheme, ClaimTypes.Name, ClaimTypes.Role);
         identity.AddClaims(new[]
         {
@@ -89,9 +103,11 @@ public sealed class AdminSessionController(UserManager<AppUser> users, SignInMan
     public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
         var cookie = await HttpContext.AuthenticateAsync(AdminSession.Scheme);
-        if (Guid.TryParse(cookie.Principal?.FindFirstValue("sid"), out var sid))
+        if (Guid.TryParse(cookie.Principal?.FindFirstValue("sid"), out var sid) &&
+            Guid.TryParse(cookie.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var ownerId))
         {
-            var session = await db.RefreshTokens.SingleOrDefaultAsync(t => t.Id == sid, cancellationToken);
+            await using var transaction = await sessionState.LockAsync([ownerId], cancellationToken);
+            var session = await db.RefreshTokens.SingleOrDefaultAsync(t => t.Id == sid && t.UserId == ownerId, cancellationToken);
             if (session is { RevokedDate: null })
             {
                 session.RevokedDate = DateTime.UtcNow;
@@ -99,6 +115,7 @@ public sealed class AdminSessionController(UserManager<AppUser> users, SignInMan
                 session.RevokedByIp = HttpContext.Connection.RemoteIpAddress?.ToString();
                 await db.SaveChangesAsync(cancellationToken);
             }
+            await transaction.CommitAsync(cancellationToken);
         }
         await HttpContext.SignOutAsync(AdminSession.Scheme);
         HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity());
